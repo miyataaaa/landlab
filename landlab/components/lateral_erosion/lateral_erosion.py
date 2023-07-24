@@ -571,12 +571,12 @@ class LateralEroder(Component):
             else:
                 # drainage area is calculated by flow router
                 da = grid.at_node["drainage_area"]
+        
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
         dp = dp_coef * (da ** dp_exp)
-
-        # add min_Q_or_da
-        da += self._add_min_Q_or_da
 
         # flow__upstream_node_order is node array contianing downstream to
         # upstream order list of node ids
@@ -951,6 +951,9 @@ class LateralEroder(Component):
             else:
                 # drainage area is calculated by flow router
                 da = grid.at_node["drainage_area"]
+
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
         dp = dp_coef * (da ** dp_exp)
