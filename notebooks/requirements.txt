@@ -87,7 +87,8 @@ defusedxml==0.7.1
     # via nbconvert
 executing==1.2.0
     # via stack-data
-fastjsonschema==2.16.2
+fastjsonschema
+    # ==2.16.2
     # via nbformat
 fqdn==1.5.1
     # via jsonschema
@@ -115,7 +116,8 @@ ipython==8.12.0
     #   ipykernel
     #   ipywidgets
     #   jupyter-console
-ipython-genutils==0.2.0
+ipython-genutils
+#==0.2.0
     # via
     #   nbclassic
     #   notebook
@@ -138,7 +140,8 @@ jinja2==3.1.2
     #   notebook
 jinja2-time==0.2.0
     # via cookiecutter
-jsonpointer==2.3
+jsonpointer
+#==2.3
     # via jsonschema
 jsonschema[format-nongpl]==4.17.3
     # via
@@ -146,7 +149,8 @@ jsonschema[format-nongpl]==4.17.3
     #   nbformat
 jupyter==1.0.0
     # via -r notebooks/requirements.in
-jupyter-client==8.2.0
+jupyter-client
+#==8.2.0
     # via
     #   ipykernel
     #   jupyter-console
@@ -155,9 +159,11 @@ jupyter-client==8.2.0
     #   nbclient
     #   notebook
     #   qtconsole
-jupyter-console==6.5.1
+jupyter-console
+#==6.5.1
     # via jupyter
-jupyter-core==5.2.0
+jupyter-core
+#==5.2.0
     # via
     #   ipykernel
     #   jupyter-client
@@ -169,17 +175,22 @@ jupyter-core==5.2.0
     #   nbformat
     #   notebook
     #   qtconsole
-jupyter-events==0.6.3
+jupyter-events
+#==0.6.3
     # via jupyter-server
-jupyter-server==2.3.0
+jupyter-server
+#==2.3.0
     # via
     #   nbclassic
     #   notebook-shim
-jupyter-server-terminals==0.4.4
+jupyter-server-terminals
+#==0.4.4
     # via jupyter-server
-jupyterlab-pygments==0.2.2
+jupyterlab-pygments
+#==0.2.2
     # via nbconvert
-jupyterlab-widgets==3.0.5
+jupyterlab-widgets
+#==3.0.5
     # via ipywidgets
 locket==1.0.0
     # via partd
@@ -197,7 +208,7 @@ mesa==1.2.1
     # via -r notebooks/requirements.in
 mistune==2.0.5
     # via nbconvert
-mypy-extensions==1.0.0
+#mypy-extensions==1.0.0
     # via black
 nbclassic==0.5.1
     # via notebook
@@ -282,7 +293,8 @@ platformdirs==3.0.0
     # via
     #   black
     #   jupyter-core
-prometheus-client==0.16.0
+prometheus-client
+#==0.16.0
     # via
     #   jupyter-server
     #   nbclassic
@@ -297,7 +309,8 @@ ptyprocess==0.7.0
     # via
     #   pexpect
     #   terminado
-pure-eval==0.2.2
+pure-eval
+#==0.2.2
     # via stack-data
 pycparser==2.21
     # via cffi
@@ -328,7 +341,8 @@ python-slugify==8.0.0
     # via cookiecutter
 pytz==2022.7.1
     # via pandas
-pyviz-comms==2.2.1
+pyviz-comms
+#==2.2.1
     # via
     #   holoviews
     #   panel
@@ -386,7 +400,8 @@ snuggs==1.4.7
     # via rasterio
 soupsieve==2.4
     # via beautifulsoup4
-stack-data==0.6.2
+stack-data
+#==0.6.2
     # via ipython
 terminado==0.17.1
     # via
@@ -438,7 +453,8 @@ typing-extensions==4.5.0
     # via
     #   bokeh
     #   panel
-tzdata==2023.3
+tzdata
+#==2023.3
     # via pandas
 uri-template==1.2.0
     # via jsonschema

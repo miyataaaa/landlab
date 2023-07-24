@@ -31,9 +31,11 @@ markupsafe==2.1.2
     # via jinja2
 matplotlib==3.7.1
     # via -r requirements.in
-mdurl==0.1.2
+mdurl
+    #==0.1.2
     # via markdown-it-py
-mypy-extensions==1.0.0
+mypy-extensions
+    #==1.0.0
     # via black
 netcdf4==1.6.3
     # via -r requirements.in
@@ -97,7 +99,8 @@ six==1.16.0
     #   python-dateutil
 statsmodels==0.13.5
     # via -r requirements.in
-tzdata==2023.3
+tzdata
+    #==2023.3
     # via pandas
 xarray==2023.4.2
     # via -r requirements.in

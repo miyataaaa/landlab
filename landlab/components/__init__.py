@@ -30,7 +30,8 @@ from .hack_calculator import HackCalculator
 from .hand_calculator import HeightAboveDrainageCalculator
 from .lake_fill import LakeMapperBarnes
 from .landslides import LandslideProbability
-from .lateral_erosion import LateralEroder
+from .lateral_erosion import LateralEroder, LataralSimilateManager, InitialTopographyMaker, HDFhandler, AnimationMaker, MultiSimilateManager
+
 from .lithology import LithoLayers, Lithology
 from .marine_sediment_transport import SimpleSubmarineDiffuser
 from .network_sediment_transporter import NetworkSedimentTransporter
@@ -122,6 +123,11 @@ COMPONENTS = [
     LakeMapperBarnes,
     LandslideProbability,
     LateralEroder,
+    LataralSimilateManager,
+    InitialTopographyMaker,
+    HDFhandler,
+    AnimationMaker,
+    MultiSimilateManager,
     LinearDiffuser,
     LinearDiffusionOverlandFlowRouter,
     ListricKinematicExtender,

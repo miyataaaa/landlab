@@ -269,7 +269,11 @@ def node_finder(grid, i, flowdirs, drain_area):
     diag_neigh = grid.diagonal_adjacent_nodes_at_node[i]
     angle_diff = np.rad2deg(angle_finder(grid, donor, i, receiver))
 
-    if (donor == flowdirs[i]) or (donor == i):
+    if donor == flowdirs[i]:
+        # this is a sink. no lateral ero
+        radcurv_angle = 0.0
+        lat_node = 0
+    elif donor == i:
         # this is a sink. no lateral ero
         radcurv_angle = 0.0
         lat_node = 0
@@ -293,3 +297,99 @@ def node_finder(grid, i, flowdirs, drain_area):
     # INVERSE radius of curvature.
     radcurv_angle = radcurv_angle / dx
     return int(lat_node), radcurv_angle
+
+def node_and_phdcur_finder(grid, i, flowdirs, drain_area):
+    """Find lateral neighbor node of the primary node for straight, 45 degree,
+    and 90 degree channel segments. さらに、そのノードの位相遅れ曲率（１つ上流側ノードでの曲率）
+    を求める。上流から下流に向かって曲率を計算していることを想定している。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array
+    drain_area : array
+        drainage area array
+
+    Returns
+    -------
+    lat_node : int
+        node ID of lateral node
+    radcurv_angle : float
+        inverse radius of curvature of channel at lateral node
+    phd_radcurv_angle : float
+        phase delay curvature of channel at lateral node
+    """
+    # receiver node of flow is flowdirs[i]
+    receiver = flowdirs[i]
+
+    # find indicies of where flowdirs=i to find donor nodes.
+    # will donor nodes always equal the index of flowdir list?
+    inflow = np.where(flowdirs == i)
+
+    # if there are more than 1 donors, find the one with largest drainage area
+
+    if len(inflow[0]) > 1:
+        drin = drain_area[inflow]
+        drmax = max(drin)
+        maxinfl = inflow[0][np.where(drin == drmax)]
+        # if donor nodes have same drainage area, choose one randomly
+        if len(maxinfl) > 1:
+            ran_num = np.random.randint(0, len(maxinfl))
+            maxinfln = maxinfl[ran_num]
+            donor = [maxinfln]
+        else:
+            donor = maxinfl
+        # if inflow is empty, no donor
+    elif len(inflow[0]) == 0:
+        donor = i
+    # else donor is the only inflow
+    else:
+        donor = inflow[0]
+    # now we have chosen donor cell, next figure out if inflow/outflow lines are
+    # straight, 45, or 90 degree angle. and figure out which node to erode
+    link_list = grid.links_at_node[i]
+    # this gives list of active neighbors for specified node
+    # the order of this list is: [E,N,W,S]
+    neighbors = grid.active_adjacent_nodes_at_node[i]
+    # this gives list of all diagonal neighbors for specified node
+    # the order of this list is: [NE,NW,SW,SE]
+    diag_neigh = grid.diagonal_adjacent_nodes_at_node[i]
+    angle_diff = np.rad2deg(angle_finder(grid, donor, i, receiver))
+
+    if donor == flowdirs[i]:
+        # this is a sink. no lateral ero
+        radcurv_angle = 0.0
+        lat_node = 0
+    elif donor == i:
+        # this is a sink. no lateral ero
+        radcurv_angle = 0.0
+        lat_node = 0
+    elif np.isclose(angle_diff, 0.0) or np.isclose(angle_diff, 180.0):
+        [lat_node, radcurv_angle] = straight_node(
+            donor, i, receiver, neighbors, diag_neigh
+        )
+    elif np.isclose(angle_diff, 45.0) or np.isclose(angle_diff, 135.0):
+        [lat_node, radcurv_angle] = forty_five_node(
+            donor, i, receiver, neighbors, diag_neigh
+        )
+    elif np.isclose(angle_diff, 90.0):
+        [lat_node, radcurv_angle] = ninety_node(
+            donor, i, receiver, link_list, neighbors, diag_neigh
+        )
+    else:
+        lat_node = 0
+        radcurv_angle = 0.0
+
+    dx = grid.dx
+    # INVERSE radius of curvature.
+    radcurv_angle = radcurv_angle / dx
+
+    # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
+    cur = grid.at_node["curvature"]
+    phd_radcurv_angle = cur[donor]
+
+    return int(lat_node), radcurv_angle, phd_radcurv_angle
