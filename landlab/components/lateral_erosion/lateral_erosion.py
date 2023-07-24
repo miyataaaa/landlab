@@ -279,7 +279,8 @@ class LateralEroder(Component):
         fai_alpha = 3.3,
         fai_beta = -0.25,
         fai_gamma = -0.85,
-        fai_C = -64
+        fai_C = -64,
+        add_min_Q_or_da = 0.0,
     ):
         """
         Parameters
@@ -501,6 +502,9 @@ class LateralEroder(Component):
         self._fai_gamma = fai_gamma
         self._fai_C = fai_C
 
+        # add min_Q_or_da
+        self._add_min_Q_or_da = add_min_Q_or_da
+
     def run_one_step_basic(self, dt=1.0):
         """Calculate vertical and lateral erosion for a time period 'dt'.
 
@@ -564,13 +568,16 @@ class LateralEroder(Component):
             if self._use_Q:
                 # water discharge is calculated by flow router
                 da = grid.at_node["surface_water__discharge"]
-                # water depth in meters, needed for lateral erosion calc
-                dp = dp_coef * da ** dp_exp
             else:
                 # drainage area is calculated by flow router
                 da = grid.at_node["drainage_area"]
-                # water depth in meters, needed for lateral erosion calc
-                dp = dp_coef * (da * runoffms) ** dp_exp
+
+        # water depth in meters, needed for lateral erosion calc
+        dp = dp_coef * (da ** dp_exp)
+
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
+
         # flow__upstream_node_order is node array contianing downstream to
         # upstream order list of node ids
         # s contein ids
@@ -941,13 +948,15 @@ class LateralEroder(Component):
             if self._use_Q:
                 # water discharge is calculated by flow router
                 da = grid.at_node["surface_water__discharge"]
-                # water depth in meters, needed for lateral erosion calc
-                dp = dp_coef * da ** dp_exp
             else:
                 # drainage area is calculated by flow router
                 da = grid.at_node["drainage_area"]
-                # water depth in meters, needed for lateral erosion calc
-                dp = dp_coef * (da * runoffms) ** dp_exp
+
+        # water depth in meters, needed for lateral erosion calc
+        dp = dp_coef * (da ** dp_exp)
+
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
         # flow__upstream_node_order is node array contianing downstream to
         # upstream order list of node ids
         s = grid.at_node["flow__upstream_node_order"]
