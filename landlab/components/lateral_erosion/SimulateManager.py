@@ -524,6 +524,7 @@ class LataralSimilateManager(HDFhandler):
         """        
 
         Dataset_Pointer, time_index = divmod(Yr, self.t_dataset_size*self.dt)
+        time_index = int(time_index/self.dt)
 
         return Dataset_Pointer, time_index
     
