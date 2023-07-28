@@ -693,6 +693,8 @@ class FlowAccumulator(Component):
         flow_director="FlowDirectorSteepest",
         runoff_rate=None,
         depression_finder=None,
+        inlet_node: int = None,
+        inlet_area: float = None,
         **kwargs,
     ):
         """Initialize the FlowAccumulator component.
@@ -769,6 +771,12 @@ class FlowAccumulator(Component):
         if len(self._kwargs) > 0:
             kwdstr = " ".join(list(self._kwargs.keys()))
             raise ValueError(f"Extra kwargs passed to FlowAccumulator:{kwdstr}")
+        
+        # STEP 4:
+        # 上流端のノードを指定する
+        # 上流端ノードでの流入量を指定する
+        self._inlet_node = inlet_node
+        self._inlet_area = inlet_area
 
     @property
     def surface_values(self):
@@ -1260,7 +1268,10 @@ class FlowAccumulator(Component):
         Note this can be overridden in inherited components.
         """
         a, q = flow_accum_bw.find_drainage_area_and_discharge(
-            s, r, self._node_cell_area, self._grid.at_node["water__unit_flux_in"]
+            s=s, r=r, node_cell_area=self._node_cell_area, 
+            runoff=self._grid.at_node["water__unit_flux_in"], 
+            boundary_nodes=None,
+            inlet_node=self._inlet_node, inlet_area=self._inlet_area
         )
         return (a, q)
 

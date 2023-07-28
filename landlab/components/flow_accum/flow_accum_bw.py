@@ -207,7 +207,7 @@ def make_ordered_node_array(receiver_nodes, nd=None, delta=None, D=None):
 
 
 def find_drainage_area_and_discharge(
-    s, r, node_cell_area=1.0, runoff=1.0, boundary_nodes=None
+    s, r, node_cell_area=1.0, runoff=1.0, boundary_nodes=None, inlet_node: int = None, inlet_area: float = 0.0
 ):
     """Calculate the drainage area and water discharge at each node.
 
@@ -271,6 +271,14 @@ def find_drainage_area_and_discharge(
     if boundary_nodes is not None:
         drainage_area[boundary_nodes] = 0
         discharge[boundary_nodes] = 0
+
+    if inlet_node is not None:
+        if type(runoff) is numpy.ndarray:
+            runoff_ = runoff[inlet_node]
+        else:
+            runoff_ = runoff
+        drainage_area[inlet_node] += inlet_area
+        discharge[inlet_node] += inlet_area * runoff_
 
     # Call the cfunc to work accumulate from upstream to downstream, permitting
     # transmission losses

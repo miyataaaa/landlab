@@ -323,8 +323,7 @@ class FastscapeEroder(Component):
         )
 
         # Handle flooded nodes, if any (no erosion there)
-        if len(flooded_nodes) > 0:
-            self._alpha[flooded_nodes] = 0.0
+        if len(flooded_nodes) > 0:            self._alpha[flooded_nodes] = 0.0
         else:
             reversed_flow = z < z[flow_receivers]
             # this check necessary if flow has been routed across depressions

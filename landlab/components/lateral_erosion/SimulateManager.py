@@ -412,6 +412,7 @@ class LataralSimilateManager(HDFhandler):
             self.start_time = self.simManage_dict["end_time"] + 1
             self.end_time = self.start_time + additional_calculation_yr -1
             self.recorded_variables = self.read_fildvalue_names()
+            self.simManage_dict["end_time"] = self.end_time # 追加計算のために計算終了時刻を更新する
       
         else:
         # 追加計算でない場合は、インスタンス時に与えられたパラメータを記録する
@@ -1152,11 +1153,11 @@ class AnimationMaker(LataralSimilateManager):
         self.outfname_key = outfname_key
         self.draw_val_name = draw_val_name
 
-        outfname_templete = f"{draw_val_name}_s{draw_start_time}_e{draw_end_time}_dt{draw_dt}"
+        outfname_templete = f"{draw_val_name}_s{self.draw_start_time}_e{self.draw_end_time}_dt{self.draw_dt}"
         self.outfname = f"{outfname_templete}.mp4" if outfname_key is None else f"{outfname_key}_{outfname_templete}.mp4"
         self.outfpath = os.path.join(self.dirpath, self.outfname)
         
-        self.draw_times = np.arange(self.draw_start_time, self.draw_end_time+self.draw_dt, self.draw_dt)
+        self.draw_times = np.arange(self.draw_start_time, self.draw_end_time, self.draw_dt)
 
     def _check_draw_time(self):
 
@@ -1176,6 +1177,8 @@ class AnimationMaker(LataralSimilateManager):
         
         if self.draw_dt % dt != 0:
             raise ValueError(f"draw_dt={self.draw_dt} must be a multiple of dt={dt}")
+        
+        print(f"draw_start_time={self.draw_start_time}, draw_end_time={self.draw_end_time}, draw_dt={self.draw_dt}")
 
     def _label_name(self, value: str) -> str:
         if value == "topographic__elevation":
