@@ -29,6 +29,7 @@ from tqdm import tqdm
 from landlab import RasterModelGrid
 from landlab.components.flow_accum import FlowAccumulator
 from landlab.components.lateral_erosion import LateralEroder
+from landlab.components.profiler import ChannelProfiler
 from landlab.plot import imshow_grid
 from typing import Union, Tuple, List, Dict, Any, Optional
 
@@ -1226,6 +1227,62 @@ class AnimationMaker(LataralSimilateManager):
             # Remove the colorbar and clear the axis to reset the
             # figure for the next animation timestep.
             plt.gci().colorbar.remove()
+            ax.cla()
+
+        writer.saving(fig, self.outfpath, 200)
+        plt.close()
+        writer.finish()
+
+    def make_anim_longitudinal_profile(self, outlet_node: int=None):
+
+        plt.rcParams['figure.figsize'] = (7, 5)
+
+        tp_param = self.read_calc_condition_param(condition_keys=["InitTP_conditions"])[0]
+        ncols = tp_param['ncols'].value
+        nrows = tp_param['nrows'].value
+        dx = tp_param['dx'].value
+
+        mg_video = RasterModelGrid(shape=(nrows, ncols), xy_spacing=dx)
+        mg_video.add_zeros("topographic__elevation", at="node")
+        mg_video.status_at_node, _comment = self.read_boundary_condition()
+
+        mg_video.at_node["topographic__elevation"] = self.read_oneYr_filedvalue(Yr=self.draw_start_time, name="topographic__elevation")
+
+        fig, ax = plt.subplots(1, 1)
+        writer = animation.FFMpegWriter(fps=10)
+        outpath = copy(self.outfpath[:-4]) + "_longitudinal_profile.mp4"
+        writer.setup(fig, outpath, 200)
+        # print(_comment)
+        y_label = self._label_name(value=self.draw_val_name)
+
+        fa_video = FlowAccumulator(
+            mg_video, 
+            surface="topographic__elevation", # FlowAccumlatorクラスの初期化に使用する地形データ
+            flow_director="FlowDirectorD8", # D8アルゴリズムの使用
+            runoff_rate=None,
+            depression_finder="DepressionFinderAndRouter", #"DepressionFinderAndRouter"
+        )
+        fa_video.run_one_step()
+
+        if outlet_node != None:
+            prf = ChannelProfiler(mg_video, number_of_watersheds=1, main_channel_only=True, outlet_nodes=[outlet_node])
+        else:
+            prf = ChannelProfiler(mg_video, number_of_watersheds=1, main_channel_only=True)
+
+        for _t in self.draw_times:
+            
+            if _t: # 初期地形の場合は上記で設定済み
+                mg_video.at_node[self.draw_val_name] = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name) # 一年分のデータを読み込む
+                fa_video.run_one_step() # 流域の流出量, 流向を計算する
+            prf.run_one_step() # 流路のプロファイルを計算する
+            prf.plot_profiles(color="blue", ylabel=y_label, title=f"{_t} years")
+            
+            # Capture the state of `fig`.
+            writer.grab_frame()
+
+            # Remove the colorbar and clear the axis to reset the
+            # figure for the next animation timestep.
+
             ax.cla()
 
         writer.saving(fig, self.outfpath, 200)
