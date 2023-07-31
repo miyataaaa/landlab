@@ -1288,3 +1288,12 @@ class AnimationMaker(LataralSimilateManager):
         writer.saving(fig, self.outfpath, 200)
         plt.close()
         writer.finish()
+
+
+        """
+        アルゴリズム改善案(2023/07/31)
+
+        ・流路移動に必要な体積の閾値を設定できるようにする（半分とか）
+        ・流向と曲率の組み合わせパターンを３から増やす
+        ・方程式の計算方法を陽解法による時間積分から陰解法による時間積分に変更して時間幅を大きくする
+        """
