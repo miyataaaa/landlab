@@ -281,6 +281,7 @@ class LateralEroder(Component):
         fai_gamma = -0.85,
         fai_C = -64,
         add_min_Q_or_da = 0.0,
+        critical_erosion_volume_ratio = 1.0,
     ):
         """
         Parameters
@@ -340,6 +341,13 @@ class LateralEroder(Component):
         fai_C : float, optional (defaults to -64)
             Parameter for calculating lateral/versonal erosion rate, dimensionless. 
             this parameter is used only when solver is "delay_rs".
+        add_min_Q_or_da : float, optional (defaults to 0)
+            Add this value to drainage area or discharge. this parameter is used only when solver is "delay_rs".
+        critical_erosion_volume_ratio : float, optional (defaults to 1.0)   
+            If the volume of lateral erosion is larger than the critical_erosion_volume_ratio * volume of lateral node,
+            lateral erosion occurs. if critical_erosion_volume_ratio is 1.0, lateral erosion occurs when the volume of 
+            lateral erosion is larger than the volume of lateral node. it is equivalent to the original algorithm (UC&TB).
+            if critical_erosion_volume_ratio is less than 1.0, lateral erosion ocuur earlier than the original algorithm.
         """
         super().__init__(grid)
 
@@ -505,6 +513,9 @@ class LateralEroder(Component):
         # add min_Q_or_da
         self._add_min_Q_or_da = add_min_Q_or_da
 
+        # add critical_erosion_volume_ratio
+        self._critical_erosion_volume_ratio = critical_erosion_volume_ratio
+
     def run_one_step_basic(self, dt=1.0):
         """Calculate vertical and lateral erosion for a time period 'dt'.
 
@@ -555,6 +566,9 @@ class LateralEroder(Component):
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
         # or add self.dzlat to itself after each time step.
         self._dzlat.fill(0.0)
+
+        # critical_erosion_volume_ratio 
+        critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
 
         if inlet_on is True:
             inlet_node = self._inlet_node
@@ -652,11 +666,11 @@ class LateralEroder(Component):
                     # UC model: this would represent undercutting (the water height at
                     # node i), slumping, and instant removal.
                     if UC == 1:
-                        voldiff = (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2
+                        voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2 
                     # TB model: entire lat node must be eroded before lateral erosion
                     # occurs
                     if TB == 1:
-                        voldiff = (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
+                        voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
                     # if the total volume eroded from lat_node is greater than the volume
                     # needed to be removed to make node equal elevation,
                     # then instantaneously remove this height from lat node. already has
@@ -937,6 +951,9 @@ class LateralEroder(Component):
         # or add self.dzlat to itself after each time step.
         self._dzlat.fill(0.0)
 
+        # critical_erosion_volume_ratio 
+        critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
+
         if inlet_on is True:
             inlet_node = self._inlet_node
             qsinlet = self._qsinlet
@@ -1039,11 +1056,11 @@ class LateralEroder(Component):
                     # UC model: this would represent undercutting (the water height at
                     # node i), slumping, and instant removal.
                     if UC == 1:
-                        voldiff = (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2
+                        voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2 
                     # TB model: entire lat node must be eroded before lateral erosion
                     # occurs
                     if TB == 1:
-                        voldiff = (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
+                        voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
                     # if the total volume eroded from lat_node is greater than the volume
                     # needed to be removed to make node equal elevation,
                     # then instantaneously remove this height from lat node. already has
