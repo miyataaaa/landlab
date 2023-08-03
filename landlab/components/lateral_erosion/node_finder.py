@@ -1,5 +1,6 @@
 import numpy as np
-
+from typing import Tuple, Union
+from landlab.grid import RadialModelGrid
 
 def angle_finder(grid, dn, cn, rn):
     """Find the interior angle between two vectors on a grid.
@@ -393,3 +394,295 @@ def node_and_phdcur_finder(grid, i, flowdirs, drain_area):
     phd_radcurv_angle = cur[donor]
 
     return int(lat_node), radcurv_angle, phd_radcurv_angle
+
+def find_upstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray) -> int:
+
+    """
+    ノードiの上流側のノードのindexを返す。
+    上流側ノードが複数ある場合は、その中で最も流域面積が大きいノードのindexを返す。
+    """    
+
+    # 流向方向がi自身(つまり、iに流れ込んでくる)ノードが上流側の―ド
+    ups_nodes = np.where(flowdirs == i)[0]
+
+    # if there are more than 1 donors, find the one with largest drainage area
+    if len(ups_nodes) > 1:
+        drin = drain_area[ups_nodes]
+        drmax = max(drin)
+        maxinfl = ups_nodes[np.where(drin == drmax)]
+        # if donor nodes have same drainage area, choose one randomly
+        if len(maxinfl) > 1:
+            ran_num = np.random.randint(0, len(maxinfl))
+            maxinfln = maxinfl[ran_num]
+            donor = [maxinfln]
+        else:
+            donor = maxinfl
+        # if inflow is empty, no donor
+    elif len(ups_nodes) == 0:
+        donor = i
+    # else donor is the only one
+    else:
+        donor = ups_nodes
+
+    return donor
+
+def find_n_upstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray, n: int) -> int:
+
+    """
+    ノードiのn個上流側のノードのindexを返す。
+
+    Returns
+    -------
+    donor : int
+        n個上流側のノードのindex
+    """    
+
+    j = 1
+    target_node = i
+
+    while j <= n:
+
+        doner = find_upstream_nodes(target_node, flowdirs, drain_area)
+
+        if doner == target_node:
+            break
+        else:
+            target_node = doner
+        j += 1
+
+    return doner
+
+def find_n_downstream_nodes(i: int, flowdirs: np.ndarray, n: int) -> int:
+
+    """
+    ノードiのn個下流側のノードのindexを返す。
+
+    Returns
+    -------
+    receiver : int
+        n個下流側のノードのindex
+    """    
+
+    j = 1
+    target_node = i
+
+    while j <= n:
+
+        receiver = flowdirs[target_node]
+
+        if receiver == target_node:
+            break
+        else:
+            target_node = receiver
+        j += 1
+
+    return receiver
+
+def is_inside_triangle_and_is_triangle(xp, yp, xa, ya, xb, yb, xc, yc) -> int:
+
+    """
+    点Pが三角形ABCの内部にあるかどうか、点ABCが三角形を構成するかどうかを判定します。
+
+    Returns
+    -------
+    flag_int: int
+        点ABCが直線上に存在する場合は-1、
+        点ABCが三角形を構成するおり、点pが三角形内部にある場合に1、
+        点ABCが三角形を構成するが、点pが三角形内部にある場合に0を返す。
+    """    
+
+    # ベクトルAB, BC, CAを計算
+    vector_ab = (xb - xa, yb - ya)
+    vector_bc = (xc - xb, yc - yb)
+    vector_ca = (xa - xc, ya - yc)
+
+    # ベクトルAP, BP, CPを計算
+    vector_ap = (xp - xa, yp - ya)
+    vector_bp = (xp - xb, yp - yb)
+    vector_cp = (xp - xc, yp - yc)
+
+    # 外積を計算
+    cross_product_ab_ap = vector_ab[0] * vector_ap[1] - vector_ab[1] * vector_ap[0]
+    cross_product_bc_bp = vector_bc[0] * vector_bp[1] - vector_bc[1] * vector_bp[0]
+    cross_product_ca_cp = vector_ca[0] * vector_cp[1] - vector_ca[1] * vector_cp[0]
+
+    # 外積の結果が0の場合、三角形ABCは直線上にある
+    if cross_product_ab_ap == 0 and cross_product_bc_bp == 0 and cross_product_ca_cp == 0:
+        return -1
+
+    # 外積の符号を確認して点Pが三角形ABCの内部にあるか外部にあるかを判定
+    if (cross_product_ab_ap >= 0 and cross_product_bc_bp >= 0 and cross_product_ca_cp >= 0) or \
+       (cross_product_ab_ap <= 0 and cross_product_bc_bp <= 0 and cross_product_ca_cp <= 0):
+        return 1  # 点Pは三角形ABCの内部にある
+    else:
+        return 0  # 点Pは三角形ABCの外部にある
+
+def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, xb: float, yb: float) -> int:
+    """
+    点Pが直線ABの右側か左側か直線上にあるかを判定します。
+
+    Parameters:
+        xp (float): 点Pのx座標
+        yp (float): 点Pのy座標
+        xa (float): 点Aのx座標
+        ya (float): 点Aのy座標
+        xb (float): 点Bのx座標
+        yb (float): 点Bのy座標
+
+    Returns:
+        int:  1 if 点Pが直線ABの右側にある場合, 
+             -1 if 点Pが直線ABの左側にある場合, 
+              0 if 点Pが直線AB上にある場合
+    """
+    def cross_product(x1, y1, x2, y2):
+        return x1 * y2 - x2 * y1
+
+    # ベクトルAP, BPを計算
+    vector_ap_x = xp - xa
+    vector_ap_y = yp - ya
+    vector_bp_x = xp - xb
+    vector_bp_y = yp - yb
+
+    # ベクトルABを計算
+    vector_ab_x = xb - xa
+    vector_ab_y = yb - ya
+
+    # 外積を計算
+    cross_product_ab_ap = cross_product(vector_ab_x, vector_ab_y, vector_ap_x, vector_ap_y)
+    cross_product_ab_bp = cross_product(vector_ab_x, vector_ab_y, vector_bp_x, vector_bp_y)
+
+    # 外積の結果をもとに点Pが直線ABの右側か左側か直線上にあるかを判定
+    if cross_product_ab_ap > 0 and cross_product_ab_bp > 0:
+        return -1  # 点Pは直線ABの左側にある
+    elif cross_product_ab_ap < 0 and cross_product_ab_bp < 0:
+        return 1  # 点Pは直線ABの右側にある
+    else:
+        return 0  # 点Pは直線AB上にある
+
+def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int, 
+                                     flowdirs: np.ndarray, drain_area: np.ndarray,
+                                     is_get_phd_cur: bool=False) -> Tuple[list, float, float]: 
+    
+    """
+    5x5のウィンドウ範囲の情報を使って、ノード探索を行う。ノードi、ノードiの2つ上流側のノード(upstream node: node A)と
+    2つ下流側のノード(downstream node: node B)の計3つのノードを結ぶ線分を大局的流線と定義する。
+    このように定義すると、表現できる角度が[33.7, 45, 56.4, 90, 123.7, 135, 146.4, 180]度の8種類になる。
+    このとき、側方侵食を受けるノードは以下の3つの条件を満たすノードである。
+
+    1. node iの上下左右の4つのノードに含まれる
+    2. 条件1を満たすノードのうち、三角形AiBの外側にある
+    3. 条件2を満たすノードのうち、流線ノードではないもの(ノードiに流れ込んでくるノードではないもの)
+
+    また、曲率は以下の近似式で求める。このとき、角度AiBをθとすると、曲率(1/R)は以下のようになる。
+
+    1/R = θ / (Ai + Bi)
+
+    ここで、Aiはnode iとnode Aの距離、Biはnode iとnode Bの距離である。
+
+    このとき、直線の場合はθ=180となるので曲率は0となり側方侵食は発生しないが、
+    直線流路の場合、河床租度の影響によりランダムに側方侵食が発生することを仮定し直線AiBの左右にあるノードのいずれかをランダムに選択する。
+    このとき、直線AiBの右側にあるときはθ=163.2, 左側にあるときはθ=-163.2として計算する。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array
+    drain_area : array
+        drainage area array
+    is_get_phd_cur : bool, optional
+        Trueの場合は位相遅れ曲率も計算する, by default False
+
+    Returns
+    -------
+    lat_nodes : list
+        node ID of lateral node
+    radcurv : float
+        curvature of channel at node i
+    phd_radcurv : float
+        phase delay curvature at node i, if is_get_phd_cur is True. default is 0.
+    """
+    
+    # 側方侵食ノードを格納するリストと曲率, 位相ずれ曲率を初期化
+    lat_nodes = []
+    radcurv = 0.
+    phd_radcurv = 0.
+
+    # 2つ上流側、2つ下流側のノードを取得する
+    n = 2
+    donor = find_n_upstream_nodes(i, flowdirs, drain_area, n)
+    receiver = find_n_downstream_nodes(i, flowdirs, n)
+
+    if donor == i or receiver == i:
+        # 上流側ノード、下流側ノードがない場合は側方侵食は発生しないので、空のリストと0を返す
+        return lat_nodes, radcurv, phd_radcurv
+    
+    # this gives list of active neighbors for specified node
+    # the order of this list is: [E,N,W,S]
+    neighbors = grid.active_adjacent_nodes_at_node[i]
+
+    side_flag = np.random.choice([-1, 1]) # donerとreceiverを結ぶ直線の右側か左側かをランダムに決定する
+    temp_lat_nodes = []
+    x_don = grid.x_of_node[donor]
+    y_don = grid.y_of_node[donor]
+    x_i = grid.x_of_node[i]
+    y_i = grid.y_of_node[i]
+    x_rec = grid.x_of_node[receiver]
+    y_rec = grid.y_of_node[receiver]
+
+    for neig in neighbors:
+        x_neig = grid.x_of_node[neig]
+        y_neig = grid.y_of_node[neig]
+        
+        # iの上下左右の4つのノードがdonor, i, receiverの三角形の内部にあるかどうかを判定する
+        # また、donor, i, receiverの三角形を構成するかどうかも判定する
+        # 0: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+        # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
+        # -1: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+        is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
+        side_of_line = None
+        if is_triangle_and_in_triangle == 0:
+            # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する
+            side_of_line = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+            # print(f"i: {i}, neig: {neig}, side_of_line: {side_of_line}, side_flag: {side_flag}")
+            if side_of_line == side_flag:
+                # 直線の右側にある場合は側方侵食ノードとする
+                temp_lat_nodes.append(neig)
+        elif is_triangle_and_in_triangle == -1:
+            # donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合は側方侵食ノードとする
+            temp_lat_nodes.append(neig)
+
+        # sent = f""" i: {i}, p: {neig}, donor: {donor}, receiver: {receiver}, is_triangle_and_in_triangle: {is_triangle_and_in_triangle}, 
+        # side_of_line: {side_of_line}, side_flag: {side_flag}, temp_lat_nodes: {temp_lat_nodes}"""
+        # print(sent)
+                
+    
+    # ノードiに流れ込んでくるノードは側方侵食ノードに含めない
+    # donors = np.where(flowdirs == i)[0]
+    # lat_nodes = [node for node in temp_lat_nodes if node not in donors]
+    lat_nodes = temp_lat_nodes
+    # 曲率を計算する
+    angle = angle_finder(grid, donor, i, receiver) # rad
+
+    if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+        angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    else:
+        angle = np.pi - angle
+
+    ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = angle / ds
+    
+    # 位相遅れを仮定する場合
+    # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
+    if is_get_phd_cur:
+        donor = find_upstream_nodes(i, flowdirs, drain_area)
+        cur = grid.at_node["curvature"]
+        phd_radcurv = cur[donor]
+
+    return lat_nodes, radcurv, phd_radcurv
