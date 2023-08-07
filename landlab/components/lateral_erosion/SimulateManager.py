@@ -556,6 +556,31 @@ class LataralSimilateManager(HDFhandler):
         valueMatrix = self.read_fildvalue_Matrix(Gname=name, Dname=str(_dataset_pointer))[0]
         return valueMatrix[_row_index]
     
+    def create_mg(self, Yr: int) -> RasterModelGrid:
+
+        """
+        指定した年の地形を作成するメソッド
+
+        Parameters
+        ----------
+        Yr : int
+            地形を作成したい年
+
+        Returns
+        -------
+        mg : RasterModelGrid
+            指定した年の地形を格納したLandlab.RasterModelGridクラスのインスタンス
+        """        
+
+        z = self.read_oneYr_filedvalue(Yr=Yr, name="topographic__elevation")
+        ncols = self.InitTP_dict['ncols']
+        nrows = self.InitTP_dict['nrows']
+        dx = self.InitTP_dict['dx']
+
+        initTP = InitialTopographyMaker(**self.InitTP_dict)
+
+        return initTP.arbitrary_topography(z=z, ncols=ncols, nrows=nrows, dx=dx)
+    
     def init_model(self) -> Tuple[RasterModelGrid, FlowAccumulator, LateralEroder]:
 
         """
