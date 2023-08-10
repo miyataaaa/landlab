@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Tuple, Union
-from landlab.grid import RadialModelGrid
+from landlab.grid import RadialModelGrid, RasterModelGrid
 
 def angle_finder(grid, dn, cn, rn):
     """Find the interior angle between two vectors on a grid.
@@ -478,7 +478,9 @@ def find_n_downstream_nodes(i: int, flowdirs: np.ndarray, n: int) -> int:
 
     return receiver
 
-def is_inside_triangle_and_is_triangle(xp, yp, xa, ya, xb, yb, xc, yc) -> int:
+def is_inside_triangle_and_is_triangle(xp: float, yp: float, xa: float, 
+                                       ya: float, xb: float, yb: float, 
+                                       xc: float, yc: float) -> int:
 
     """
     点Pが三角形ABCの内部にあるかどうか、点ABCが三角形を構成するかどうかを判定します。
@@ -492,19 +494,19 @@ def is_inside_triangle_and_is_triangle(xp, yp, xa, ya, xb, yb, xc, yc) -> int:
     """    
 
     # ベクトルAB, BC, CAを計算
-    vector_ab = (xb - xa, yb - ya)
-    vector_bc = (xc - xb, yc - yb)
-    vector_ca = (xa - xc, ya - yc)
+    vector_ab = (xb - xa, yb - ya) # float
+    vector_bc = (xc - xb, yc - yb) # float
+    vector_ca = (xa - xc, ya - yc) # float
 
     # ベクトルAP, BP, CPを計算
-    vector_ap = (xp - xa, yp - ya)
-    vector_bp = (xp - xb, yp - yb)
-    vector_cp = (xp - xc, yp - yc)
+    vector_ap = (xp - xa, yp - ya) # float 
+    vector_bp = (xp - xb, yp - yb) # float
+    vector_cp = (xp - xc, yp - yc) # float
 
     # 外積を計算
-    cross_product_ab_ap = vector_ab[0] * vector_ap[1] - vector_ab[1] * vector_ap[0]
-    cross_product_bc_bp = vector_bc[0] * vector_bp[1] - vector_bc[1] * vector_bp[0]
-    cross_product_ca_cp = vector_ca[0] * vector_cp[1] - vector_ca[1] * vector_cp[0]
+    cross_product_ab_ap = vector_ab[0] * vector_ap[1] - vector_ab[1] * vector_ap[0] # float
+    cross_product_bc_bp = vector_bc[0] * vector_bp[1] - vector_bc[1] * vector_bp[0] # float
+    cross_product_ca_cp = vector_ca[0] * vector_cp[1] - vector_ca[1] * vector_cp[0] # float
 
     # 外積の結果が0の場合、三角形ABCは直線上にある
     if cross_product_ab_ap == 0 and cross_product_bc_bp == 0 and cross_product_ca_cp == 0:
@@ -686,3 +688,4 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
         phd_radcurv = cur[donor]
 
     return lat_nodes, radcurv, phd_radcurv
+

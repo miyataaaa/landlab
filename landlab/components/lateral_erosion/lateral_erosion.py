@@ -11,7 +11,7 @@ from landlab import Component, RasterModelGrid
 from landlab.components.flow_accum import FlowAccumulator
 
 from .node_finder import node_finder, node_and_phdcur_finder, node_finder_use_fivebyfive_window
-
+from .cfuncs import node_finder_use_fivebyfive_window as node_finder_use_C
 # Hard coded constants
 cfl_cond = 0.3  # CFL timestep condition
 wid_coeff = 0.4  # coefficient for calculating channel width
@@ -1197,7 +1197,7 @@ class LateralEroder(Component):
             if i in flowdirs:
                 # node_finder picks the lateral node to erode based on angle
                 # between segments between three nodes
-                lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window(grid, i, flowdirs, da, is_get_phd_cur=True)
+                lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_C(grid, i, flowdirs, da, is_get_phd_cur=True)
                 # print(f"lat_nodes_at_i: {lat_nodes_at_i}")
                 # node_finder returns the lateral node ID and the radius of curvature
                 if len(lat_nodes_at_i) > 0:
