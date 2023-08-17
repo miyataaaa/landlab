@@ -1115,13 +1115,6 @@ class LateralEroder(Component):
         fai_gamma = self._fai_gamma
         fai_C = self._fai_C
 
-        # May 2, runoff calculated below (in m/s) is important for calculating
-        # 2022/07/07 unit of runoff is not m/s, maybe m/yr
-        # discharge and water depth correctly. renamed runoffms to prevent
-        # confusion with other uses of runoff
-        runoffms = (Klr * F / kw) ** 2
-        # Kl is calculated from ratio of lateral to vertical K parameters
-        Kl = Kv * Klr
         z = grid.at_node["topographic__elevation"]
         # clear qsin for next loop
         qs_in = grid.add_zeros("sediment__influx", at="node", clobber=True)

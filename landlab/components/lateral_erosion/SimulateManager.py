@@ -1222,8 +1222,25 @@ class AnimationMaker(LataralSimilateManager):
             return "surface water discharge [$m^3/s$]"
         else:
             raise ValueError("wrong filed name!, check HDFfile dataset name")
+        
+    def get_minmax(self, Yr: int, value: str) -> Tuple[float, float]:
+
+        """
+        指定した年の指定した変数の最小値と最大値を返すメソッド
+
+        Returns
+        -------
+        Tuple[min_val, max_val]
+            指定した年の指定した変数の最小値と最大値
+        """        
+
+        val = self.read_oneYr_filedvalue(Yr=Yr, name=value)
+        min_val = np.min(val)
+        max_val = np.max(val)
+
+        return min_val, max_val
     
-    def make_anim(self):
+    def make_anim(self, color_limit: bool=True):
         plt.rcParams['figure.figsize'] = (7, 5)
 
         tp_param = self.read_calc_condition_param(condition_keys=["InitTP_conditions"])[0]
@@ -1240,10 +1257,18 @@ class AnimationMaker(LataralSimilateManager):
         # print(_comment)
         colorbar_lavel = self._label_name(value=self.draw_val_name)
 
+        limits = None
+        if color_limit:
+            min_val, max_val = self.get_minmax(Yr=self.draw_times[-1], value=self.draw_val_name)
+            limits = (min_val, max_val)
+
         for _t in self.draw_times:
             
             val = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name)
-            imshow_grid(mg_video, val, grid_units=["m", "m"], colorbar_label=colorbar_lavel, cmap=cmap, plot_name=f"{_t} years")
+            imshow_grid(mg_video, val, grid_units=["m", "m"], 
+                        colorbar_label=colorbar_lavel, cmap=cmap, 
+                        plot_name=f"{_t} years",
+                        limits=limits,)
             # plt.title(f"{self.base_yr+_yr} years") limits=limits ,
 
             # Capture the state of `fig`.
@@ -1314,11 +1339,86 @@ class AnimationMaker(LataralSimilateManager):
         plt.close()
         writer.finish()
 
-
+    def make_anim_with_channelLine(self, 
+                              color_limit: bool=True,
+                              minimum_outlet_threshold: float=0.,
+                              minimum_channel_threshold: float=0.,
+                              ):
+        
         """
-        アルゴリズム改善案(2023/07/31)
+        標高と共に河道の流線を描画するメソッド
 
-        ・流路移動に必要な体積の閾値を設定できるようにする（半分とか）
-        ・流向と曲率の組み合わせパターンを３から増やす
-        ・方程式の計算方法を陽解法による時間積分から陰解法による時間積分に変更して時間幅を大きくする
-        """
+        Parameters
+        ----------
+        minimum_outlet_threshold : float, optional
+            河口が持つ流域面積の閾値（河口と認識される最小値）, by default 0.
+        minimum_channel_threshold : float, optional
+            谷頭が持つ流域面積の閾値（これ以上で河川と認識）, by default 0.
+        """        
+
+        self.draw_val_name = "topographic__elevation"
+        plt.rcParams['figure.figsize'] = (7, 5)
+
+        tp_param = self.read_calc_condition_param(condition_keys=["InitTP_conditions"])[0]
+        ncols = tp_param['ncols'].value
+        nrows = tp_param['nrows'].value
+        dx = tp_param['dx'].value
+
+        mg_video = RasterModelGrid(shape=(nrows, ncols), xy_spacing=dx)
+        mg_video.add_zeros("topographic__elevation", at="node")
+        mg_video.status_at_node, _comment = self.read_boundary_condition()
+
+        mg_video.at_node["topographic__elevation"] = self.read_oneYr_filedvalue(Yr=self.draw_start_time, name="topographic__elevation")
+
+        fig, ax = plt.subplots(1, 1)
+        writer = animation.FFMpegWriter(fps=10)
+        outpath = copy(self.outfpath[:-4]) + "_with_channelLine.mp4"
+        writer.setup(fig, outpath, 200)
+        # print(_comment)
+        
+        fa_video = FlowAccumulator(
+            mg_video, 
+            **self.FlowAcc_dict,
+        )
+        fa_video.run_one_step()
+
+        prf = ChannelProfiler(
+                mg_video, 
+                number_of_watersheds=1, #出力する流域の数
+                main_channel_only=False, #本流だけ描画
+                minimum_outlet_threshold=minimum_outlet_threshold, #河口が持つ流域面積の閾値（河口と認識される最小値）
+                minimum_channel_threshold=minimum_channel_threshold, #谷頭が持つ流域面積の閾値（これ以上で河川と認識）
+            )
+        
+        limits = None
+        if color_limit:
+            min_val, max_val = self.get_minmax(Yr=self.draw_times[-1], value=self.draw_val_name)
+            limits = (min_val, max_val)
+        
+        kwds = {
+                "grid_units":["m", "m"],
+                "colorbar_label":"elevation (m)",
+                "cmap": copy(mpl.cm.get_cmap("gist_earth")),
+                "limits": limits,
+            }
+
+        for _t in self.draw_times:
+            
+            if _t: # 初期地形の場合は上記で設定済み
+                mg_video.at_node[self.draw_val_name] = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name) # 一年分のデータを読み込む
+                fa_video.run_one_step() # 流域の流出量, 流向を計算する
+            prf.run_one_step() # 流路のプロファイルを計算する
+            prf.plot_profiles_in_map_view(color="black", plot_name=f"{_t} years",**kwds)
+            
+            # Capture the state of `fig`.
+            writer.grab_frame()
+
+            # Remove the colorbar and clear the axis to reset the
+            # figure for the next animation timestep.
+            plt.gci().colorbar.remove()
+            ax.cla()
+
+        writer.saving(fig, self.outfpath, 200)
+        plt.close()
+        writer.finish()
+        
