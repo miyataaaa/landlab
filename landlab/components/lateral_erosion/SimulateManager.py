@@ -1340,10 +1340,11 @@ class AnimationMaker(LataralSimilateManager):
         writer.finish()
 
     def make_anim_with_channelLine(self, 
-                              color_limit: bool=True,
-                              minimum_outlet_threshold: float=0.,
-                              minimum_channel_threshold: float=0.,
-                              ):
+                                   fps: int=5,
+                                   color_limit: bool=True,
+                                   minimum_outlet_threshold: float=0.,
+                                   minimum_channel_threshold: float=0.,
+                                  ):
         
         """
         標高と共に河道の流線を描画するメソッド
@@ -1371,7 +1372,7 @@ class AnimationMaker(LataralSimilateManager):
         mg_video.at_node["topographic__elevation"] = self.read_oneYr_filedvalue(Yr=self.draw_start_time, name="topographic__elevation")
 
         fig, ax = plt.subplots(1, 1)
-        writer = animation.FFMpegWriter(fps=10)
+        writer = animation.FFMpegWriter(fps=fps)
         outpath = copy(self.outfpath[:-4]) + "_with_channelLine.mp4"
         writer.setup(fig, outpath, 200)
         # print(_comment)
@@ -1401,24 +1402,104 @@ class AnimationMaker(LataralSimilateManager):
                 "cmap": copy(mpl.cm.get_cmap("gist_earth")),
                 "limits": limits,
             }
+        
+        _first_loop = True
+        
+        with writer.saving(fig, outpath, dpi=200):
+
+            for _t in self.draw_times:
+                
+                if not _first_loop: # 初期地形の場合は上記で設定済み
+                    mg_video.at_node[self.draw_val_name] = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name) # 一年分のデータを読み込む
+                    fa_video.run_one_step() # 流域の流出量, 流向を計算する
+                else:
+                    _first_loop = False
+                prf.run_one_step() # 流路のプロファイルを計算する
+                prf.plot_profiles_in_map_view(color="black", plot_name=f"{_t} years",**kwds)
+                
+                # Capture the state of `fig`.
+                writer.grab_frame()
+
+                # Remove the colorbar and clear the axis to reset the
+                # figure for the next animation timestep.
+                plt.gci().colorbar.remove()
+                ax.cla()
+        plt.close()
+        # writer.saving(fig, self.outfpath, 200)
+        
+        # writer.finish()
+        
+    def make_anim_with_channelLine_useMask(self, 
+                                   fps: int=10,
+                                   minimum_channel_threshold: float=0.,
+                                  ):
+        
+        """
+        標高と共に河道の流線を描画するメソッド
+
+        Parameters
+        ----------
+        fps: int, optional
+            1秒あたりのフレーム数, by default 5
+        color_limit: bool, optional
+            標高のカラーバーの最大値と最小値を時間変化を通じて揃えるかどうか, by default True
+        minimum_channel_threshold : float, optional
+            谷頭が持つ流域面積の閾値（これ以上で河川と認識）, by default 0.
+        """        
+
+        plt.rcParams['figure.figsize'] = (7, 5)
+
+        self.draw_val_name = "topographic__elevation"
+
+        tp_param = self.read_calc_condition_param(condition_keys=["InitTP_conditions"])[0]
+        ncols = tp_param['ncols'].value
+        nrows = tp_param['nrows'].value
+        dx = tp_param['dx'].value
+
+        cmap = copy(mpl.cm.get_cmap("gist_earth"))
+        mg_video = RasterModelGrid(shape=(nrows, ncols), xy_spacing=dx)
+        mg_video.status_at_node, _comment = self.read_boundary_condition()
+        fig, ax = plt.subplots(1, 1)
+        writer = animation.FFMpegWriter(fps=fps)
+        outpath = copy(self.outfpath[:-4]) + "_with_channelLine.mp4"
+        writer.setup(fig, outpath, 200)
+        # print(_comment)
+        colorbar_lavel = self._label_name(value=self.draw_val_name)
+
+        min_val, max_val = self.get_minmax(Yr=self.draw_times[-1], value=self.draw_val_name)
+        limits = (min_val, max_val)
+
+        _is_first_loop = True
 
         for _t in self.draw_times:
             
-            if _t: # 初期地形の場合は上記で設定済み
-                mg_video.at_node[self.draw_val_name] = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name) # 一年分のデータを読み込む
-                fa_video.run_one_step() # 流域の流出量, 流向を計算する
-            prf.run_one_step() # 流路のプロファイルを計算する
-            prf.plot_profiles_in_map_view(color="black", plot_name=f"{_t} years",**kwds)
+            # valは全てのノードの標高値を持つ一次元配列
+            val = self.read_oneYr_filedvalue(Yr=_t, name=self.draw_val_name)
+
+            if _is_first_loop:
+                allow_colorbar = True
+                _is_first_loop = False
+            else:
+                allow_colorbar = False
+
+            imshow_grid(mg_video, val, grid_units=["m", "m"], 
+                        colorbar_label=colorbar_lavel, cmap=cmap, 
+                        plot_name=f"{_t} years",
+                        limits=limits,
+                        allow_colorbar=allow_colorbar,)
             
+            da = self.read_oneYr_filedvalue(Yr=_t, name="drainage_area")
+            masked_array = (da < minimum_channel_threshold) # 流域面積がminimum_channel_threshold以下のノードをTrueとするマスク配列
+            imshow_grid(mg_video, masked_array, color_for_closed=None, allow_colorbar=False, show_elements=True) # Trueの部分が透過される
+
             # Capture the state of `fig`.
             writer.grab_frame()
 
             # Remove the colorbar and clear the axis to reset the
             # figure for the next animation timestep.
-            plt.gci().colorbar.remove()
+            # plt.gci().colorbar.remove()
             ax.cla()
 
         writer.saving(fig, self.outfpath, 200)
         plt.close()
         writer.finish()
-        
