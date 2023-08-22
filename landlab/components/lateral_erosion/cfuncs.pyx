@@ -13,6 +13,9 @@ ctypedef np.longlong_t DTYPE_LONG_t
 DTYPE_FLOAT = np.double
 ctypedef np.double_t DTYPE_FLOAT_t
 
+DTYPE_COMPLEX = np.cdouble
+#ctypedef np.double_complex_t DTYPE_COMPLEX_t
+
 cpdef DTYPE_INT_t test(DTYPE_INT_t i, 
                 np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
                 np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area):
@@ -22,6 +25,7 @@ cdef extern from "math.h":
     DTYPE_FLOAT_t acos(DTYPE_FLOAT_t)
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_FLOAT_t calculate_angle(DTYPE_FLOAT_t xd, DTYPE_FLOAT_t yd, 
                                            DTYPE_FLOAT_t xi, DTYPE_FLOAT_t yi, 
                                            DTYPE_FLOAT_t xr, DTYPE_FLOAT_t yr):
@@ -52,6 +56,7 @@ cpdef inline DTYPE_FLOAT_t calculate_angle(DTYPE_FLOAT_t xd, DTYPE_FLOAT_t yd,
     return angle_radian
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_INT_t find_upstream_nodes(DTYPE_INT_t i, 
                                     np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
                                     np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area) except -1:
@@ -96,6 +101,7 @@ cpdef inline DTYPE_INT_t find_upstream_nodes(DTYPE_INT_t i,
     return donor  # Return the first element (int) as the result
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_INT_t find_n_upstream_nodes(DTYPE_INT_t i, 
                                       np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
                                       np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
@@ -116,6 +122,7 @@ cpdef inline DTYPE_INT_t find_n_upstream_nodes(DTYPE_INT_t i,
     return doner
     
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_INT_t find_n_downstream_nodes(DTYPE_INT_t i, 
                                                  np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
                                                  DTYPE_INT_t n) except -1:
@@ -135,6 +142,7 @@ cpdef inline DTYPE_INT_t find_n_downstream_nodes(DTYPE_INT_t i,
     return receiver
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_INT_t is_inside_triangle_and_is_triangle(DTYPE_FLOAT_t xp, DTYPE_FLOAT_t yp, 
                                                     DTYPE_FLOAT_t xa, DTYPE_FLOAT_t ya, 
                                                     DTYPE_FLOAT_t xb, DTYPE_FLOAT_t yb, 
@@ -171,6 +179,7 @@ cpdef inline DTYPE_INT_t is_inside_triangle_and_is_triangle(DTYPE_FLOAT_t xp, DT
         return 0  # 点Pは三角形ABCの外部にある
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_INT_t point_position_relative_to_line(DTYPE_FLOAT_t xp, DTYPE_FLOAT_t yp, 
                                                  DTYPE_FLOAT_t xa, DTYPE_FLOAT_t ya, 
                                                  DTYPE_FLOAT_t xb, DTYPE_FLOAT_t yb):
@@ -192,6 +201,7 @@ cpdef inline DTYPE_INT_t point_position_relative_to_line(DTYPE_FLOAT_t xp, DTYPE
         return 0  # 点Pは直線AB上にある
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef tuple node_finder_use_fivebyfive_window(grid, 
                                               DTYPE_INT_t i, 
                                               np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
@@ -221,8 +231,8 @@ cpdef tuple node_finder_use_fivebyfive_window(grid,
 
     cdef list temp_lat_nodes = []
 
-    cdef j = 0
-    cdef neig = 0
+    cdef DTYPE_INT_t j = 0
+    cdef DTYPE_INT_t neig = 0
     cdef:
         DTYPE_FLOAT_t x_neig, y_neig
         DTYPE_INT_t  is_triangle_and_in_triangle, side_of_line
@@ -263,101 +273,58 @@ cpdef tuple node_finder_use_fivebyfive_window(grid,
 
     return result
 
-# ここから再開
-cpdef void _run_one_step_fivebyfive_window(_self, DTYPE_FLOAT_t dt):
-    
-    grid = _self.grid
-    UC = _self._UC
-    TB = _self._TB
-    inlet_on = _self._inlet_on  # this is a true/false flag
-    Kv = _self._Kv
-    qs_in = _self._qs_in
-    dzdt = _self._dzdt
-    alph = _self._alph
-    vol_lat = grid.at_node["volume__lateral_erosion"]
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef void _run_one_step_fivebyfive_window(
+                                           grid,
+                                           np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
+                                           np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] z, 
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] da,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dp,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] Kv,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] max_slopes,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzver,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] cur,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] phd_cur,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] El,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] fai,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzlat,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
+                                           DTYPE_FLOAT_t dx,
+                                           double fai_alpha,
+                                           double fai_beta,
+                                           double fai_gamma,
+                                           double fai_C,
+                                           double dt,
+                                           double critical_erosion_volume_ratio,
+                                           bint UC,
+                                           bint TB,
+                                           ):
 
-    dp_coef = _self._dp_coef
-    dp_exp = _self._dp_exp
-    kw = _self._wid_coef
-    F = _self._F
-    thresh_da = _self._thresh_da
+    cdef:
+         DTYPE_INT_t i, j, k, node_num_at_i, lat_node
+         DTYPE_INT_t iterNum = len(dwnst_nodes)
+         DTYPE_INT_t nodeNum = grid.shape[0]*grid.shape[1]
+         DTYPE_FLOAT_t inv_rad_curv, phd_inv_rad_curv, R, S, ero
+         DTYPE_FLOAT_t petlat = 0. # potential lateral erosion initially set to 0
+    cdef np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat_dt = np.zeros(grid.number_of_nodes)
+    cdef double epsilon = 1e-10
+    cdef int dummy = -99
+    cdef list lat_nodes_at_i = []
+    cdef list lat_nodes = [[dummy] for i in range(nodeNum)]
 
-    # phd_node_num = 1
-    cur = grid.at_node["curvature"]
-    phd_cur = grid.at_node["phd_curvature"]
+    i = 0
 
-    fai_alpha = _self._fai_alpha
-    fai_beta = _self._fai_beta
-    fai_gamma = _self._fai_gamma
-    fai_C = _self._fai_C
-
-    z = grid.at_node["topographic__elevation"]
-    # clear qsin for next loop
-    qs_in = grid.add_zeros("sediment__influx", at="node", clobber=True)
-    qs = grid.add_zeros("qs", at="node", clobber=True)
-    dzver = np.zeros(grid.number_of_nodes)
-    El = grid.add_zeros("latero__rate", at="node", clobber=True) 
-    El = grid.at_node["latero__rate"] 
-    fai = grid.add_zeros("fai", at="node", clobber=True)
-    fai = grid.at_node["fai"]
-    vol_lat_dt = np.zeros(grid.number_of_nodes)
-
-    # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
-    # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
-    # or add _self.dzlat to itself after each time step.
-    _self._dzlat.fill(0.0)
-
-    # critical_erosion_volume_ratio 
-    critical_erosion_volume_ratio = _self._critical_erosion_volume_ratio
-
-    if inlet_on is True:
-        inlet_node = _self._inlet_node
-        qsinlet = _self._qsinlet
-        qs_in[inlet_node] = qsinlet
-        q = grid.at_node["surface_water__discharge"]
-        da = q / grid.dx**2
-    # if inlet flag is not on, proceed as normal.
-    else:
-        if _self._use_Q:
-            # water discharge is calculated by flow router
-            da = grid.at_node["surface_water__discharge"]
-        else:
-            # drainage area is calculated by flow router
-            da = grid.at_node["drainage_area"]
-
-    # add min_Q_or_da
-    da += _self._add_min_Q_or_da
-
-    # water depth in meters, needed for lateral erosion calc
-    dp = dp_coef * (da ** dp_exp)
-
-    # add min_Q_or_da
-    da += _self._add_min_Q_or_da
-    # flow__upstream_node_order is node array contianing downstream to
-    # upstream order list of node ids
-    s = grid.at_node["flow__upstream_node_order"]
-    max_slopes = grid.at_node["topographic__steepest_slope"]
-    flowdirs = grid.at_node["flow__receiver_node"]
-
-    # make a list l, where node status is interior (signified by label 0) in s
-    # make threshold mask, because apply equation only river. (2022/10/26)
-    interior_mask = np.where(np.logical_and(grid.status_at_node == 0, da >= thresh_da))[0]
-    interior_s = np.intersect1d(s, interior_mask)
-    dwnst_nodes = interior_s.copy()
-    # reverse list so we go from upstream to down stream
-    dwnst_nodes = dwnst_nodes[::-1]
-    lat_nodes = [i for i in range(grid.shape[0]*grid.shape[1])]
-    max_slopes[:] = max_slopes.clip(0)
-    
-    epsilon = 1e-10
-
-    for i in dwnst_nodes:
-        # calc deposition and erosion
-        dep = alph * qs_in[i] / da[i]
-        ero = -Kv[i] * da[i] ** (0.5) * max_slopes[i]
-        dzver[i] = dep + ero
-
-        # potential lateral erosion initially set to 0
+    for j in range(iterNum):
+        i = dwnst_nodes[j]
+        # calc erosion
+        #S = np.clip(float(max_slopes[i].real), 1e-8, None)
+        S = np.clip(max_slopes[i], 1e-8, None).astype(np.float64)
+        # ero = -Kv[i] * (da[i] ** (0.5)) * S
+        ero = -Kv[i] * np.power(da[i], 0.5) * S
+        dzver[i] = ero
         petlat = 0.0
         
         # Choose lateral node for node i. If node i flows downstream, continue.
@@ -365,11 +332,10 @@ cpdef void _run_one_step_fivebyfive_window(_self, DTYPE_FLOAT_t dt):
         # into this loop because in this case, node i won't have a "donor" node
         if i in flowdirs:
             # node_finder picks the lateral node to erode based on angle
-            # between segments between three nodes
-            lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_C(grid, i, flowdirs, da, is_get_phd_cur=True)
-            # lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window(grid, i, flowdirs, da, is_get_phd_cur=True)
-            # print(f"lat_nodes_at_i: {lat_nodes_at_i}")
-            # node_finder returns the lateral node ID and the radius of curvature
+            # between segments between five nodes
+            # node_finder returns the lateral node ID and the curvature and phase delay curvature
+            lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window(grid, i, flowdirs, da, is_get_phd_cur=True)
+
             if len(lat_nodes_at_i) > 0:
                 lat_nodes[i] = lat_nodes_at_i
             cur[i] = inv_rad_curv
@@ -378,11 +344,13 @@ cpdef void _run_one_step_fivebyfive_window(_self, DTYPE_FLOAT_t dt):
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
             R = 1/(phd_inv_rad_curv+epsilon)
-            S = np.clip(max_slopes[i], 1e-8, None)
             fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
             petlat = fai[i] * ero
             El[i] = petlat
-            for lat_node in lat_nodes_at_i:
+            node_num_at_i = len(lat_nodes_at_i)
+
+            for k in range(node_num_at_i):
+                lat_node = lat_nodes_at_i[k]
                 if lat_node > 0:
                     # if the elevation of the lateral node is higher than primary node,
                     # calculate a new potential lateral erosion (L/T), which is negative
@@ -393,50 +361,45 @@ cpdef void _run_one_step_fivebyfive_window(_self, DTYPE_FLOAT_t dt):
                         # each timestep loop. vol_lat_dt is added to itself in case more than one primary
                         # nodes are laterally eroding this lat_node
                         # volume of lateral erosion per timestep
-                        vol_lat_dt[lat_node] += abs(petlat) * grid.dx * dp[i]
+                        vol_lat_dt[lat_node] += abs(petlat) * dx * dp[i]
                         # wd? may be H is true. how calc H ? 
-        # else:
-        #     lat_nodes[i] = [0]
-        # send sediment downstream. sediment eroded from vertical incision
-        # and lateral erosion is sent downstream
-        #            print("debug before 406")
-        qs_in[flowdirs[i]] += (
-            qs_in[i] - (dzver[i] * grid.dx**2) - (petlat * grid.dx * dp[i])
-        )  # qsin to next node
-        # print(f"qs_in[i] = {qs_in[i]:.2f}, qs_in[flowdirs[i]] = {qs_in[flowdirs[i]]:.2f}, i = {i}, flowdirs[i] = {flowdirs[i]}")
-    qs[:] = qs_in - (dzver * grid.dx**2)
+
     dzdt[:] = dzver * dt
     vol_lat[:] += vol_lat_dt * dt
     # this loop determines if enough lateral erosion has happened to change
     # the height of the neighbor node.
     # print(f"len(lat_nodes): {len(lat_nodes)}, len(dwns_nodes): {len(dwnst_nodes)}")
-    for i in dwnst_nodes:
+    for j in range(iterNum):
+        i = dwnst_nodes[j]
         lat_nodes_at_i = lat_nodes[i]
-        if isinstance(lat_nodes_at_i, list):
-            for lat_node in lat_nodes_at_i:
+
+        if lat_nodes_at_i[0] != dummy:
+            node_num_at_i = len(lat_nodes_at_i)
+
+            for k in range(node_num_at_i):
+                lat_node = lat_nodes_at_i[k]
                 if lat_node > 0:  # greater than zero now bc inactive neighbors are value -1
                     if z[lat_node] > z[i]:
                         # vol_diff is the volume that must be eroded from lat_node so that its
                         # elevation is the same as node downstream of primary node
                         # UC model: this would represent undercutting (the water height at
                         # node i), slumping, and instant removal.
-                        if UC == 1:
-                            voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2 
+                        if UC:
+                            voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i]]) * dx**2 
                         # TB model: entire lat node must be eroded before lateral erosion
                         # occurs
-                        if TB == 1:
-                            voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
+                        if TB:
+                            voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i]]) * dx**2
                         # if the total volume eroded from lat_node is greater than the volume
                         # needed to be removed to make node equal elevation,
                         # then instantaneously remove this height from lat node. already has
                         # timestep in it
                         if vol_lat[lat_node] >= voldiff:
-                            _self._dzlat[lat_node] = z[flowdirs[i]] - z[lat_node]  # -0.001
+                            dzlat[lat_node] = z[flowdirs[i]] - z[lat_node]  # -0.001
                             # after the lateral node is eroded, reset its volume eroded to
                             # zero
                             vol_lat[lat_node] = 0.0
     # combine vertical and lateral erosion.
-    dz = dzdt + _self._dzlat
+    dz = dzdt + dzlat
     # change height of landscape
     z[:] += dz
-    return grid, _self._dzlat
