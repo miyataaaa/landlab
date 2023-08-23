@@ -810,12 +810,16 @@ class InitialTopographyMaker:
     初期地形を作成するためのクラス。初期地形の形成と同時に境界条件も設定する。
     """    
 
-    def __init__(self, dx: int, nrows: int, ncols: int, 
+    def __init__(self, 
+                 dx: int, 
+                 nrows: int,
+                 ncols: int, 
                  boundary_condition_status: int=0,
                  initz_func: str="create_flat_elevation", 
                  initial_elevation: float=1000.0,
                  create_tp_hyper_param: dict=None,
-                 initz_fpath: str=None):
+                 initz_fpath: str=None,
+                 random_seed: int=1,):
         """
         Parameters
         ----------
@@ -845,8 +849,8 @@ class InitialTopographyMaker:
         self.initz_func = initz_func
         self.initial_elevation = initial_elevation
         self.initz_fpath = initz_fpath
-        self.random_seed = 0
-        np.random.seed(self.random_seed)
+        self.random_seed = random_seed
+        self.random_state = np.random.RandomState(self.random_seed)
         self.outlet_node = None
         self.mg = self._create_zero_elevation()
         self.mg, self.bd_comment = self.boundary_condition(self.mg)
@@ -901,7 +905,7 @@ class InitialTopographyMaker:
         """        
 
         mg = self.mg
-        initial_roughness = np.random.rand(self.nrows*self.ncols)
+        initial_roughness = self.random_state.rand(self.nrows*self.ncols)
         mg.at_node["topographic__elevation"] += initial_roughness
         mg.at_node["topographic__elevation"][mg.core_nodes] += self.initial_elevation # コアノード（境界ではないノード）の標高値を設定
         mg.at_node["topographic__elevation"][mg.boundary_nodes] = 0.0 # 境界ノードは標高０に設定

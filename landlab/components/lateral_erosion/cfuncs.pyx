@@ -202,7 +202,7 @@ cpdef inline DTYPE_INT_t point_position_relative_to_line(DTYPE_FLOAT_t xp, DTYPE
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef tuple node_finder_use_fivebyfive_window(grid, 
+cpdef inline tuple node_finder_use_fivebyfive_window(grid, 
                                               DTYPE_INT_t i, 
                                               np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
                                               np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
@@ -275,7 +275,7 @@ cpdef tuple node_finder_use_fivebyfive_window(grid,
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef void _run_one_step_fivebyfive_window(
+cpdef inline void _run_one_step_fivebyfive_window(
                                            grid,
                                            np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
                                            np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
