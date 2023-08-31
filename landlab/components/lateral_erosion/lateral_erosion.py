@@ -1200,7 +1200,7 @@ class LateralEroder(Component):
             phd_cur,
             El,
             fai,
-            vol_lat_dt,
+            vol_lat,
             self._dzlat,
             dzdt,
             grid.dx,
