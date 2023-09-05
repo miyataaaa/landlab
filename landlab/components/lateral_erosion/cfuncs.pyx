@@ -154,6 +154,8 @@ cpdef inline DTYPE_INT_t is_inside_triangle_and_is_triangle(DTYPE_FLOAT_t xp, DT
     cdef DTYPE_FLOAT_t vector_bc_y = yc - yb
     cdef DTYPE_FLOAT_t vector_ca_x = xa - xc
     cdef DTYPE_FLOAT_t vector_ca_y = ya - yc
+    cdef DTYPE_FLOAT_t vector_ac_x = xc - xa
+    cdef DTYPE_FLOAT_t vector_ac_y = yc - ya
 
     # ベクトルAP, BP, CPを計算
     cdef DTYPE_FLOAT_t vector_ap_x = xp - xa
@@ -167,9 +169,10 @@ cpdef inline DTYPE_INT_t is_inside_triangle_and_is_triangle(DTYPE_FLOAT_t xp, DT
     cdef DTYPE_FLOAT_t cross_product_ab_ap = vector_ab_x * vector_ap_y - vector_ab_y * vector_ap_x
     cdef DTYPE_FLOAT_t cross_product_bc_bp = vector_bc_x * vector_bp_y - vector_bc_y * vector_bp_x
     cdef DTYPE_FLOAT_t cross_product_ca_cp = vector_ca_x * vector_cp_y - vector_ca_y * vector_cp_x
+    cdef DTYPE_FLOAT_t cross_product_ab_ac = vector_ab_x * vector_ac_y - vector_ab_y * vector_ac_x
 
     # 外積の結果が0の場合、三角形ABCは直線上にある
-    if cross_product_ab_ap == 0 and cross_product_bc_bp == 0 and cross_product_ca_cp == 0:
+    if np.isclose(cross_product_ab_ac, 0.0):
         return -1
 
     # 外積の符号を確認して点Pが三角形ABCの内部にあるか外部にあるかを判定
@@ -191,11 +194,11 @@ cpdef inline DTYPE_INT_t point_position_relative_to_line(DTYPE_FLOAT_t xp, DTYPE
     cdef DTYPE_FLOAT_t vector_ab_y = yb - ya
 
     cdef DTYPE_FLOAT_t cross_product_ab_ap = vector_ab_x * vector_ap_y - vector_ab_y * vector_ap_x
-    cdef DTYPE_FLOAT_t cross_product_ab_bp = vector_ab_x * vector_bp_y - vector_ab_y * vector_bp_x
+    #cdef DTYPE_FLOAT_t cross_product_ab_bp = vector_ab_x * vector_bp_y - vector_ab_y * vector_bp_x
 
-    if cross_product_ab_ap > 0 and cross_product_ab_bp > 0:
+    if cross_product_ab_ap < 0 :#and cross_product_ab_bp > 0:
         return -1  # 点Pは直線ABの左側にある
-    elif cross_product_ab_ap < 0 and cross_product_ab_bp < 0:
+    elif cross_product_ab_ap > 0:# and cross_product_ab_bp < 0:
         return 1  # 点Pは直線ABの右側にある
     else:
         return 0  # 点Pは直線AB上にある
@@ -235,19 +238,22 @@ cpdef inline tuple node_finder_use_fivebyfive_window(grid,
     cdef DTYPE_INT_t neig = 0
     cdef:
         DTYPE_FLOAT_t x_neig, y_neig
-        DTYPE_INT_t  is_triangle_and_in_triangle, side_of_line
+        DTYPE_INT_t  is_triangle_and_in_triangle, side_of_line_i, side_of_line_neig
     for j in range(len(neighbors)):
         neig = neighbors[j]
         x_neig = grid.x_of_node[neig]
         y_neig = grid.y_of_node[neig]
         is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
-        side_of_line = -1
-
-        if is_triangle_and_in_triangle == 0:
-            side_of_line = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
-            if side_of_line == side_flag:
+        side_of_line_i = point_position_relative_to_line(x_i, y_i, x_don, y_don, x_rec, y_rec)
+        side_of_line_neig = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+        
+        # -1: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+        # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
+        # 0: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+        if is_triangle_and_in_triangle == -1:
+            if side_of_line_neig == side_flag:
                 temp_lat_nodes.append(neig)
-        elif is_triangle_and_in_triangle == -1:
+        elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
             temp_lat_nodes.append(neig)
 
     lat_nodes = temp_lat_nodes

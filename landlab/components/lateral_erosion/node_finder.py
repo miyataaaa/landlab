@@ -483,20 +483,22 @@ def is_inside_triangle_and_is_triangle(xp: float, yp: float, xa: float,
                                        xc: float, yc: float) -> int:
 
     """
-    点Pが三角形ABCの内部にあるかどうか、点ABCが三角形を構成するかどうかを判定します。
+    点Pが三角形ABCの内部にあるかどうか、点ABCが三角形を構成するかどうかを判定する。
 
     Returns
     -------
     flag_int: int
-        点ABCが直線上に存在する場合は-1、
-        点ABCが三角形を構成するおり、点pが三角形内部にある場合に1、
-        点ABCが三角形を構成するが、点pが三角形内部にある場合に0を返す。
+        点ABCが直線上に存在する場合は-1 \n
+        点ABCが三角形を構成しており、点pが三角形内部にある場合に1\n
+        点ABCが三角形を構成するが、点pが三角形外部にある場合に0\n
+        を返す。
     """    
 
     # ベクトルAB, BC, CAを計算
     vector_ab = (xb - xa, yb - ya) # float
     vector_bc = (xc - xb, yc - yb) # float
     vector_ca = (xa - xc, ya - yc) # float
+    vector_ac = (xc - xa, yc - ya) # float
 
     # ベクトルAP, BP, CPを計算
     vector_ap = (xp - xa, yp - ya) # float 
@@ -507,9 +509,10 @@ def is_inside_triangle_and_is_triangle(xp: float, yp: float, xa: float,
     cross_product_ab_ap = vector_ab[0] * vector_ap[1] - vector_ab[1] * vector_ap[0] # float
     cross_product_bc_bp = vector_bc[0] * vector_bp[1] - vector_bc[1] * vector_bp[0] # float
     cross_product_ca_cp = vector_ca[0] * vector_cp[1] - vector_ca[1] * vector_cp[0] # float
+    cross_product_ab_ac = vector_ab[0] * vector_ac[1] - vector_ab[1] * vector_ac[0] # float
 
     # 外積の結果が0の場合、三角形ABCは直線上にある
-    if cross_product_ab_ap == 0 and cross_product_bc_bp == 0 and cross_product_ca_cp == 0:
+    if np.isclose(cross_product_ab_ac, 0):
         return -1
 
     # 外積の符号を確認して点Pが三角形ABCの内部にあるか外部にあるかを判定
@@ -523,18 +526,27 @@ def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, 
     """
     点Pが直線ABの右側か左側か直線上にあるかを判定します。
 
-    Parameters:
-        xp (float): 点Pのx座標
-        yp (float): 点Pのy座標
-        xa (float): 点Aのx座標
-        ya (float): 点Aのy座標
-        xb (float): 点Bのx座標
-        yb (float): 点Bのy座標
+    Parameters
+    ----------
+    xp: float
+        点Pのx座標
+    yp: float
+        点Pのy座標
+    xa: float
+        直線ABの始点のx座標
+    ya: float
+        直線ABの始点のy座標
+    xb: float
+        直線ABの終点のx座標
+    yb: float   
+        直線ABの終点のy座標
 
-    Returns:
-        int:  1 if 点Pが直線ABの右側にある場合, 
-             -1 if 点Pが直線ABの左側にある場合, 
-              0 if 点Pが直線AB上にある場合
+    Returns
+    -------
+    flag_: int
+        1 if 点Pが直線ABの右側にある場合, \n
+        -1 if 点Pが直線ABの左側にある場合, \n
+        0 if 点Pが直線AB上にある場合\n
     """
     def cross_product(x1, y1, x2, y2):
         return x1 * y2 - x2 * y1
@@ -542,8 +554,8 @@ def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, 
     # ベクトルAP, BPを計算
     vector_ap_x = xp - xa
     vector_ap_y = yp - ya
-    vector_bp_x = xp - xb
-    vector_bp_y = yp - yb
+    # vector_bp_x = xp - xb
+    # vector_bp_y = yp - yb
 
     # ベクトルABを計算
     vector_ab_x = xb - xa
@@ -551,12 +563,12 @@ def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, 
 
     # 外積を計算
     cross_product_ab_ap = cross_product(vector_ab_x, vector_ab_y, vector_ap_x, vector_ap_y)
-    cross_product_ab_bp = cross_product(vector_ab_x, vector_ab_y, vector_bp_x, vector_bp_y)
+    # cross_product_ab_bp = cross_product(vector_ab_x, vector_ab_y, vector_bp_x, vector_bp_y)
 
     # 外積の結果をもとに点Pが直線ABの右側か左側か直線上にあるかを判定
-    if cross_product_ab_ap > 0 and cross_product_ab_bp > 0:
+    if cross_product_ab_ap < 0: #and cross_product_ab_bp > 0:
         return -1  # 点Pは直線ABの左側にある
-    elif cross_product_ab_ap < 0 and cross_product_ab_bp < 0:
+    elif cross_product_ab_ap > 0:# and cross_product_ab_bp < 0:
         return 1  # 点Pは直線ABの右側にある
     else:
         return 0  # 点Pは直線AB上にある
@@ -641,20 +653,20 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
         
         # iの上下左右の4つのノードがdonor, i, receiverの三角形の内部にあるかどうかを判定する
         # また、donor, i, receiverの三角形を構成するかどうかも判定する
-        # 0: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+        # -1: donor, i, receiverが１直線上にある場合(三角形を構成しない)
         # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
-        # -1: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+        # 0: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
         is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
-        side_of_line = None
-        if is_triangle_and_in_triangle == 0:
-            # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する
-            side_of_line = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
-            # print(f"i: {i}, neig: {neig}, side_of_line: {side_of_line}, side_flag: {side_flag}")
-            if side_of_line == side_flag:
+        side_of_line_i = point_position_relative_to_line(x_i, y_i, x_don, y_don, x_rec, y_rec)
+        side_of_line_neig = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+        if is_triangle_and_in_triangle == -1:
+            # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する 
+            if side_of_line_neig == side_flag:
                 # 直線の右側にある場合は側方侵食ノードとする
                 temp_lat_nodes.append(neig)
-        elif is_triangle_and_in_triangle == -1:
-            # donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合は側方侵食ノードとする
+        elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
+            # donor, i, receiverが三角形を構成しており、neigが三角形の内部にあるかつ、
+            # 直線donor-receiverに対してノードiとノードneigが同じ側にある場合は側方侵食ノードとする
             temp_lat_nodes.append(neig)
 
         # sent = f""" i: {i}, p: {neig}, donor: {donor}, receiver: {receiver}, is_triangle_and_in_triangle: {is_triangle_and_in_triangle}, 
