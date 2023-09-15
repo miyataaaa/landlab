@@ -575,7 +575,7 @@ def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, 
 
 def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int, 
                                      flowdirs: np.ndarray, drain_area: np.ndarray,
-                                     is_get_phd_cur: bool=False) -> Tuple[list, float, float]: 
+                                     is_get_phd_cur: bool=False, dummy_value: np.int64=-99) -> Tuple[list, float, float]: 
     
     """
     5x5のウィンドウ範囲の情報を使って、ノード探索を行う。ノードi、ノードiの2つ上流側のノード(upstream node: node A)と
@@ -639,7 +639,8 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
     neighbors = grid.active_adjacent_nodes_at_node[i]
 
     side_flag = np.random.choice([-1, 1]) # donerとreceiverを結ぶ直線の右側か左側かをランダムに決定する
-    temp_lat_nodes = []
+    # temp_lat_nodes = []
+    temp_lat_nodes = np.full(shape=(4), fill_value=dummy_value, dtype=np.int64)
     x_don = grid.x_of_node[donor]
     y_don = grid.y_of_node[donor]
     x_i = grid.x_of_node[i]
@@ -647,6 +648,7 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
     x_rec = grid.x_of_node[receiver]
     y_rec = grid.y_of_node[receiver]
 
+    k = 0
     for neig in neighbors:
         x_neig = grid.x_of_node[neig]
         y_neig = grid.y_of_node[neig]
@@ -663,11 +665,15 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
             # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する 
             if side_of_line_neig == side_flag:
                 # 直線の右側にある場合は側方侵食ノードとする
-                temp_lat_nodes.append(neig)
+                # temp_lat_nodes.append(neig)
+                temp_lat_nodes[k] = neig
+                k += 1
         elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
             # donor, i, receiverが三角形を構成しており、neigが三角形の内部にあるかつ、
             # 直線donor-receiverに対してノードiとノードneigが同じ側にある場合は側方侵食ノードとする
-            temp_lat_nodes.append(neig)
+            # temp_lat_nodes.append(neig)
+            temp_lat_nodes[k] = neig
+            k += 1
 
         # sent = f""" i: {i}, p: {neig}, donor: {donor}, receiver: {receiver}, is_triangle_and_in_triangle: {is_triangle_and_in_triangle}, 
         # side_of_line: {side_of_line}, side_flag: {side_flag}, temp_lat_nodes: {temp_lat_nodes}"""
@@ -700,4 +706,146 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
         phd_radcurv = cur[donor]
 
     return lat_nodes, radcurv, phd_radcurv
+
+def node_finder_use_fivebyfive_window_diag(grid: RadialModelGrid, i: int, 
+                                     flowdirs: np.ndarray, drain_area: np.ndarray,
+                                     is_get_phd_cur: bool=False, dummy_value: np.int64=-99) -> Tuple[list, float, float]: 
+    
+    """
+    5x5のウィンドウ範囲の情報を使って、ノード探索を行う。ノードi、ノードiの2つ上流側のノード(upstream node: node A)と
+    2つ下流側のノード(downstream node: node B)の計3つのノードを結ぶ線分を大局的流線と定義する。
+    このように定義すると、表現できる角度が[33.7, 45, 56.4, 90, 123.7, 135, 146.4, 180]度の8種類になる。
+    このとき、側方侵食を受けるノードは以下の3つの条件を満たすノードである。
+
+    1. node iの上下左右の4つのノードに含まれる
+    2. 条件1を満たすノードのうち、三角形AiBの外側にある
+    3. 条件2を満たすノードのうち、流線ノードではないもの(ノードiに流れ込んでくるノードではないもの)
+
+    また、曲率は以下の近似式で求める。このとき、角度AiBをθとすると、曲率(1/R)は以下のようになる。
+
+    1/R = θ / (Ai + Bi)
+
+    ここで、Aiはnode iとnode Aの距離、Biはnode iとnode Bの距離である。
+
+    このとき、直線の場合はθ=180となるので曲率は0となり側方侵食は発生しないが、
+    直線流路の場合、河床租度の影響によりランダムに側方侵食が発生することを仮定し直線AiBの左右にあるノードのいずれかをランダムに選択する。
+    このとき、直線AiBの右側にあるときはθ=163.2, 左側にあるときはθ=-163.2として計算する。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array
+    drain_area : array
+        drainage area array
+    is_get_phd_cur : bool, optional
+        Trueの場合は位相遅れ曲率も計算する, by default False
+
+    Returns
+    -------
+    lat_nodes : list
+        node ID of lateral node
+    radcurv : float
+        curvature of channel at node i
+    phd_radcurv : float
+        phase delay curvature at node i, if is_get_phd_cur is True. default is 0.
+    """
+    
+    # 側方侵食ノードを格納するリストと曲率, 位相ずれ曲率を初期化
+    lat_nodes = []
+    radcurv = 0.
+    phd_radcurv = 0.
+
+    # 2つ上流側、2つ下流側のノードを取得する
+    n = 2
+    donor = find_n_upstream_nodes(i, flowdirs, drain_area, n)
+    receiver = find_n_downstream_nodes(i, flowdirs, n)
+
+    if donor == i or receiver == i:
+        # 上流側ノード、下流側ノードがない場合は側方侵食は発生しないので、空のリストと0を返す
+        return lat_nodes, radcurv, phd_radcurv
+    
+    # this gives list of active neighbors for specified node
+    # the order of this list is: [E,N,W,S]
+    neighbors = grid.active_adjacent_nodes_at_node[i]
+    diag_neighs = grid.diagonal_adjacent_nodes_at_node[i]
+
+    neighbors = np.concatenate([neighbors, diag_neighs])
+
+    side_flag = np.random.choice([-1, 1]) # donerとreceiverを結ぶ直線の右側か左側かをランダムに決定する
+    # temp_lat_nodes = []
+    temp_lat_nodes = np.full(shape=(8), fill_value=dummy_value, dtype=np.int64)
+    x_don = grid.x_of_node[donor]
+    y_don = grid.y_of_node[donor]
+    x_i = grid.x_of_node[i]
+    y_i = grid.y_of_node[i]
+    x_rec = grid.x_of_node[receiver]
+    y_rec = grid.y_of_node[receiver]
+
+    donors = np.where(flowdirs == i)[0]
+    k = 0
+    for neig in neighbors:
+
+        if neig not in donors:
+
+            x_neig = grid.x_of_node[neig]
+            y_neig = grid.y_of_node[neig]
+            
+            # iの上下左右の4つのノードがdonor, i, receiverの三角形の内部にあるかどうかを判定する
+            # また、donor, i, receiverの三角形を構成するかどうかも判定する
+            # -1: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+            # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
+            # 0: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+            is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
+            side_of_line_i = point_position_relative_to_line(x_i, y_i, x_don, y_don, x_rec, y_rec)
+            side_of_line_neig = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+            if is_triangle_and_in_triangle == -1:
+                # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する 
+                if side_of_line_neig == side_flag:
+                    # 直線の右側にある場合は側方侵食ノードとする
+                    # temp_lat_nodes.append(neig)
+                    temp_lat_nodes[k] = neig
+                    k += 1
+            elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
+                # donor, i, receiverが三角形を構成しており、neigが三角形の内部にあるかつ、
+                # 直線donor-receiverに対してノードiとノードneigが同じ側にある場合は側方侵食ノードとする
+                # temp_lat_nodes.append(neig)
+                temp_lat_nodes[k] = neig
+                k += 1
+
+        # sent = f""" i: {i}, p: {neig}, donor: {donor}, receiver: {receiver}, is_triangle_and_in_triangle: {is_triangle_and_in_triangle}, 
+        # side_of_line: {side_of_line}, side_flag: {side_flag}, temp_lat_nodes: {temp_lat_nodes}"""
+        # print(sent)
+                
+    
+    # ノードiに流れ込んでくるノードは側方侵食ノードに含めない
+    # donors = np.where(flowdirs == i)[0]
+    # lat_nodes = [node for node in temp_lat_nodes if node not in donors]
+    lat_nodes = temp_lat_nodes
+    # 曲率を計算する
+    angle = angle_finder(grid, donor, i, receiver) # rad
+
+    if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+        angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    else:
+        angle = np.pi - angle
+
+    ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = angle / ds
+    
+    # 位相遅れを仮定する場合
+    # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
+    if is_get_phd_cur:
+        donor = find_upstream_nodes(i, flowdirs, drain_area)
+        cur = grid.at_node["curvature"]
+        phd_radcurv = cur[donor]
+
+    return lat_nodes, radcurv, phd_radcurv
+
 
