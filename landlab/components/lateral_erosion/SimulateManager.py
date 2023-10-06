@@ -800,6 +800,11 @@ class LataralSimilateManager(HDFhandler):
         self.fa = fa
         self.latero = latero
 
+        if self.progress_to_txt:
+            with open(self.progress_txtfile_path, "a") as f:
+                print(f"finish. {datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')}", end="\n", file=f)
+
+
         print("\nFinish!")
 
 class InitialTopographyMaker:
