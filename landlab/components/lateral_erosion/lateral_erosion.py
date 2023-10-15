@@ -12,6 +12,7 @@ from landlab.components.flow_accum import FlowAccumulator
 
 from .node_finder import node_finder, node_and_phdcur_finder, node_finder_use_fivebyfive_window
 from .cfuncs import node_finder_use_fivebyfive_window as node_finder_use_C
+from .cfuncs import node_finder_use_fivebyfive_window_ver2 as node_finder_use_C_ver2
 from .cfuncs import _run_one_step_fivebyfive_window, _run_one_step_fivebyfive_window_ver2
 from .cfuncs import _run_one_step_fivebyfive_window_ver3
 # Hard coded constants
@@ -1220,7 +1221,8 @@ class LateralEroder(Component):
         return grid, self._dzlat   
 
     def run_one_step_fivebyfive_window_python(self, dt=1.0):
-        """Calculate vertical and lateral erosion for a time period 'dt'.
+        """
+        Calculate vertical and lateral erosion for a time period 'dt'.
 
         Parameters
         ----------
@@ -1334,11 +1336,11 @@ class LateralEroder(Component):
                 # between segments between three nodes
                 # lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_C(grid, i, flowdirs, da, is_get_phd_cur=True)
                 lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window(grid, 
-                                                                                                   i, 
-                                                                                                   flowdirs, 
-                                                                                                   da, 
-                                                                                                   is_get_phd_cur=True,
-                                                                                                   dummy_value=dummy)
+                                                                                                    i, 
+                                                                                                    flowdirs, 
+                                                                                                    da, 
+                                                                                                    is_get_phd_cur=True,
+                                                                                                    dummy_value=dummy)
                 
                 # node_finder returns the lateral node ID and the radius of curvature
                 loop_flag = np.where(lat_nodes_at_i != dummy)[0]

@@ -419,6 +419,10 @@ cpdef inline tuple node_finder_use_fivebyfive_window_ver2(grid,
                                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
                                                           bint is_get_phd_cur=False,
                                                           DTYPE_INT_t dummy_value=-99):
+
+    # Ver1とVer2でセルの選定規則は変わらないが、
+    # Ver2では、lat_nodeをnp.ndarrayを使って実装している。
+    # Ver1ではリストを使って実装しているので、Ver2の方が実行速度が速い  
     
     #cdef list lat_nodes = []
     cdef np.ndarray[DTYPE_INT_t, ndim=1] lat_nodes = np.full(shape=(4), fill_value=dummy_value)
@@ -772,6 +776,8 @@ cpdef inline void _run_one_step_fivebyfive_window_ver3(
                                            bint UC,
                                            bint TB,
                                            ):
+
+    # Ver3では、側方侵食セルの選定対象に対角線上のセルも含めている
 
     cdef:
          DTYPE_INT_t i, j, k, node_num_at_i, lat_node

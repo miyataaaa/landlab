@@ -693,6 +693,9 @@ class LataralSimilateManager(HDFhandler):
         try:
         
             for i in range(_start, _end, 1):
+
+                if self.Current_time > self.end_time:
+                    break
             
                 # 流れ方向の更新
                 fa.run_one_step()
