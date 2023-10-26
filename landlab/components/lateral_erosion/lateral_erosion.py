@@ -451,6 +451,12 @@ class LateralEroder(Component):
         else:
             self._phd_curvature = grid.add_zeros("phd_curvature", at="node")
 
+        # add "flow depth" field
+        if "flow_depth" in grid.at_node:
+            self._flow_depth = grid.at_node["flow_depth"]
+        else:   
+            self._flow_depth = grid.add_zeros("flow_depth", at="node")
+
 
         # you can specify the type of lateral erosion model you want to use.
         # But if you don't the default is the undercutting-slump model
@@ -610,7 +616,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # flow__upstream_node_order is node array contianing downstream to
         # upstream order list of node ids
@@ -993,7 +1000,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # add min_Q_or_da
         da += self._add_min_Q_or_da
@@ -1170,7 +1178,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # add min_Q_or_da
         da += self._add_min_Q_or_da
@@ -1295,7 +1304,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # add min_Q_or_da
         da += self._add_min_Q_or_da
@@ -1496,7 +1506,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # add min_Q_or_da
         da += self._add_min_Q_or_da
@@ -1620,7 +1631,8 @@ class LateralEroder(Component):
         da += self._add_min_Q_or_da
 
         # water depth in meters, needed for lateral erosion calc
-        dp = dp_coef * (da ** dp_exp)
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
 
         # add min_Q_or_da
         da += self._add_min_Q_or_da

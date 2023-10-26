@@ -1232,6 +1232,8 @@ class AnimationMaker(LataralSimilateManager):
             return "lateral/vertical ratio [-]"
         elif value == "surface_water__discharge":
             return "surface water discharge [$m^3/s$]"
+        elif value == "flow_depth":
+            return "flow depth [m]"
         else:
             raise ValueError("wrong filed name!, check HDFfile dataset name")
         
