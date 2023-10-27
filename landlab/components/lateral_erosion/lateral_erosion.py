@@ -549,6 +549,13 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            Langston & Tucker (2018)
+        ノード選定アルゴリズム
+            Langston & Tucker (2018)
         """
         Klr = self._Klr
         grid = self._grid
@@ -925,6 +932,13 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            Langston & Tucker (2018)
         """
         Klr = self._Klr
         grid = self._grid
@@ -1111,6 +1125,15 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            ffwindow
+
+        lat_nodesの実装がpythonのリスト
         """
         Klr = self._Klr
         grid = self._grid
@@ -1237,6 +1260,16 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            ffwindow
+
+        run_one_step_fivebyfive_window_Cと同様のアルゴリズムをC言語をつかわずにすべてpythonを
+        用いて実装したバージョン
         """
         Klr = self._Klr
         grid = self._grid
@@ -1439,6 +1472,16 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            ffwindow
+
+        lat_nodesの実装がnp.ndarray。
+        アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
         """
         Klr = self._Klr
         grid = self._grid
@@ -1564,6 +1607,13 @@ class LateralEroder(Component):
         ----------
         dt : float
             Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            ffwindow + diagonalセル
         """
         Klr = self._Klr
         grid = self._grid

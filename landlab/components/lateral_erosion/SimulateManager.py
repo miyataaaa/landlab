@@ -178,7 +178,7 @@ class HDFhandler:
         with h5py.File(self.fpath, "r") as f:
             assert "simulateGroup" in f, "there is no group which name is = simulateGroup"
             assert "Calculation_parameters" in f["/simulateGroup"], "there is no group which name is = Calculation_parametersin simulateGroup"
-
+            
             for key in condition_keys:
                 if not (key in f["/simulateGroup/Calculation_parameters"]):
                     raise ValueError(f"there is no key which name is = {key} in Calculation_parameters")
