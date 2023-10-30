@@ -414,7 +414,7 @@ def find_upstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray) ->
         if len(maxinfl) > 1:
             ran_num = np.random.randint(0, len(maxinfl))
             maxinfln = maxinfl[ran_num]
-            donor = [maxinfln]
+            donor = maxinfln
         else:
             donor = maxinfl
         # if inflow is empty, no donor
@@ -443,6 +443,7 @@ def find_n_upstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray, 
     while j <= n:
 
         doner = find_upstream_nodes(target_node, flowdirs, drain_area)
+        # print(f"doner: {doner}")
 
         if doner == target_node:
             break

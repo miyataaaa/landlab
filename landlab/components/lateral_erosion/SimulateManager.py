@@ -581,6 +581,27 @@ class LataralSimilateManager(HDFhandler):
 
         return initTP.arbitrary_topography(z=z, ncols=ncols, nrows=nrows, dx=dx)
     
+    def create_fa(self, mg: RasterModelGrid) -> FlowAccumulator:
+
+        """
+        設定した流量条件でのFlowAccumulatorクラスをインスタンス化する
+
+        Parameters
+        ----------
+        mg : RasterModelGrid
+            標高情報等を格納したグリッドオブジェクト
+
+        Returns
+        -------
+        _type_
+            _description_
+        """        
+
+        # 流量条件の設定
+        fa = FlowAccumulator(grid=mg, **self.FlowAcc_dict)
+
+        return fa
+    
     def init_model(self) -> Tuple[RasterModelGrid, FlowAccumulator, LateralEroder]:
 
         """
