@@ -1517,3 +1517,14 @@ class AnimationMaker(LataralSimilateManager):
         writer.saving(fig, self.outfpath, 200)
         plt.close()
         writer.finish()
+
+
+class AnalysisManager(LataralSimilateManager):
+
+    def __init__(self, dirpath: str, HDF_fname: str):
+                 
+        super().__init__(dirpath=dirpath, HDF_fname=HDF_fname, additional_calculation_flag=True, additional_calculation_yr=0)
+        
+    def test(self):
+        print("test function")
+        
