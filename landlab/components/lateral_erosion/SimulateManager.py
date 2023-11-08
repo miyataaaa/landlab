@@ -1196,7 +1196,7 @@ class InitialTopographyMaker:
             self.outlet_node = np.where(outlet_flag)[0][0]
         flag = outlet_flag#+inlet_flag
         mg.status_at_node[flag] = mg.BC_NODE_IS_FIXED_VALUE
-        print(mid_x, flag)
+        # print(mid_x, flag)
         return mg, _comment
 
 
