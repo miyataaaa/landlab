@@ -947,7 +947,7 @@ cpdef inline tuple node_finder_use_fivebyfive_window_only_hill(grid,
         neig = neighbors[j]
 
         # ここを変更
-        if neig in dwnst_nodes:
+        if (neig in dwnst_nodes) or (neig == -1) or (neig == i) or (neig == donor) or (neig == receiver):
             continue
         else:
             x_neig = grid.x_of_node[neig]
