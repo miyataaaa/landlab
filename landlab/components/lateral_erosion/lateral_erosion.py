@@ -11,8 +11,8 @@ from landlab import Component, RasterModelGrid
 from landlab.components.flow_accum import FlowAccumulator
 
 from .node_finder import node_finder
-from .cfuncs import node_finder_use_fivebyfive_window_ver2
-from .cfuncs import _run_one_step_fivebyfive_window_ver2
+from .cfuncs import node_finder_use_fivebyfive_window_ver2, node_finder_use_fivebyfive_window_only_hill
+from .cfuncs import _run_one_step_fivebyfive_window_ver2, _run_one_step_fivebyfive_window_only_hill
 
 # Hard coded constants
 cfl_cond = 0.3  # CFL timestep condition
@@ -312,6 +312,8 @@ class LateralEroder(Component):
                     it is use in Langston & Tucker (2018) and defined in node_finder.py.
                 (2) 'ffwindow': 
                     Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window.
+                (3) 'ffwindow_only_hill':
+                    Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window and choose only hillslope nodes.
         use_Q : bool, optional (defaults to False)
             If True, use the discharge to calculate erosion rate. If False, use the drainage area.
         inlet_node : integer, optional
@@ -383,7 +385,8 @@ class LateralEroder(Component):
             )
         
         node_finder_list = ("langston", 
-                            "ffwindow")
+                            "ffwindow",
+                            "ffwindow_only_hill")
         
         if node_finder not in node_finder_list:
             raise ValueError(
@@ -468,10 +471,14 @@ class LateralEroder(Component):
             self.run_one_step = self.run_one_step_langston_langston
         elif solver == "langston" and node_finder == "ffwindow":
             self.run_one_step = self.run_one_step_langston_ffwindow
+        elif solver == "langston" and node_finder == "ffwindow_only_hill":
+            self.run_one_step = self.run_one_step_langston_ffwindow_only_hill
         elif solver == "ULE" and node_finder == "langston":
             self.run_one_step = self.run_one_step_ULE_langston
         elif solver == "ULE" and node_finder == "ffwindow":
             self.run_one_step = self.run_one_step_ULE_ffwindow
+        elif solver == "ULE" and node_finder == "ffwindow_only_hill":
+            self.run_one_step = self.run_one_step_ULE_ffwindow_only_hill
 
         self._alph = alph
         self._Kv = Kv  # can be overwritten with spatially variable
@@ -906,6 +913,205 @@ class LateralEroder(Component):
         z[:] += dz
 
         return grid, self._dzlat
+    
+    def run_one_step_langston_ffwindow_only_hill(self, dt=1.0):
+        """Calculate vertical and lateral erosion for a time period 'dt'.
+
+        Parameters
+        ----------
+        dt : float
+            Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            Langston & Tucker (2018)
+        ノード選定アルゴリズム
+            Langston & Tucker (2018)
+        """
+        Klr = self._Klr
+        grid = self._grid
+        UC = self._UC
+        TB = self._TB
+        inlet_on = self._inlet_on  # this is a true/false flag
+        Kv = self._Kv
+        qs_in = self._qs_in
+        dzdt = self._dzdt
+        alph = self._alph
+        vol_lat = grid.at_node["volume__lateral_erosion"]
+        
+        # kw = 10.0
+        # F = 0.02
+        dp_coef = self._dp_coef
+        dp_exp = self._dp_exp
+        kw = self._wid_coef
+        F = self._F
+        thresh_da = self._thresh_da
+
+        # May 2, runoff calculated below (in m/s) is important for calculating
+        # 2022/07/07 unit of runoff is not m/s, maybe m/yr
+        # discharge and water depth correctly. renamed runoffms to prevent
+        # confusion with other uses of runoff
+        runoffms = (Klr * F / kw) ** 2
+        # Kl is calculated from ratio of lateral to vertical K parameters
+        Kl = Kv * Klr
+        z = grid.at_node["topographic__elevation"]
+        # clear qsin for next loop
+        qs_in = grid.add_zeros("sediment__influx", at="node", clobber=True)
+        qs = grid.add_zeros("qs", at="node", clobber=True)
+        dzver = np.zeros(grid.number_of_nodes)
+        El = grid.add_zeros("latero__rate", at="node", clobber=True) 
+        El = grid.at_node["latero__rate"] 
+        fai = grid.add_zeros("fai", at="node", clobber=True)
+        fai = grid.at_node["fai"]
+        vol_lat_dt = np.zeros(grid.number_of_nodes)
+        cur = grid.at_node["curvature"]
+        phd_cur = grid.at_node["phd_curvature"]
+
+        # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
+        # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
+        # or add self.dzlat to itself after each time step.
+        self._dzlat.fill(0.0)
+
+        # critical_erosion_volume_ratio 
+        critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
+
+        if inlet_on is True:
+            inlet_node = self._inlet_node
+            qsinlet = self._qsinlet
+            qs_in[inlet_node] = qsinlet
+            q = grid.at_node["surface_water__discharge"]
+            # da = q / grid.dx**2
+            da = q / runoffms # change, 2022/10/19
+        # if inlet flag is not on, proceed as normal.
+        else:
+            if self._use_Q:
+                # water discharge is calculated by flow router
+                da = grid.at_node["surface_water__discharge"]
+            else:
+                # drainage area is calculated by flow router
+                da = grid.at_node["drainage_area"]
+        
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
+
+        # water depth in meters, needed for lateral erosion calc
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
+
+        # flow__upstream_node_order is node array contianing downstream to
+        # upstream order list of node ids
+        # s contein ids
+        s = grid.at_node["flow__upstream_node_order"]
+        max_slopes = grid.at_node["topographic__steepest_slope"]
+        flowdirs = grid.at_node["flow__receiver_node"]
+
+        # make a list l, where node status is interior (signified by label 0) in s
+        # make threshold mask, because apply equation only river. (2022/10/26)
+        interior_mask = np.where(np.logical_and(grid.status_at_node == 0, da >= thresh_da))[0]
+        interior_s = np.intersect1d(s, interior_mask)
+        dwnst_nodes = interior_s.copy()
+        # reverse list so we go from upstream to down stream
+        dwnst_nodes = dwnst_nodes[::-1]
+        max_slopes[:] = max_slopes.clip(0)
+        iterNum = len(dwnst_nodes)
+        dummy_value = -99
+
+        nodeNum = grid.shape[0]*grid.shape[1]
+        lat_nodes = np.full(shape=(nodeNum, 4), fill_value=dummy_value) # node iの上下４つのノードが入るサイズ
+        i = 0
+
+        for j in range(iterNum):
+            i = dwnst_nodes[j]
+            # calc erosion
+            #S = np.clip(float(max_slopes[i].real), 1e-8, None)
+            S = np.clip(max_slopes[i], 1e-8, None).astype(np.float64)
+            # ero = -Kv[i] * (da[i] ** (0.5)) * S
+            ero = -Kv[i] * np.power(da[i], 0.5) * S
+            dzver[i] = ero
+            petlat = 0.0
+            
+            # Choose lateral node for node i. If node i flows downstream, continue.
+            # if node i is the first cell at the top of the drainage network, don't go
+            # into this loop because in this case, node i won't have a "donor" node
+            if i in flowdirs:
+                # node_finder picks the lateral node to erode based on angle
+                # between segments between five nodes
+                # node_finder returns the lateral node ID and the curvature and phase delay curvature
+                lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window_only_hill(
+                                                                                                            grid, 
+                                                                                                            i, 
+                                                                                                            flowdirs, 
+                                                                                                            da, 
+                                                                                                            dwnst_nodes,
+                                                                                                            is_get_phd_cur=True,
+                                                                                                            dummy_value=dummy_value,
+                                                                                                             )
+
+                lat_nodes[i] = lat_nodes_at_i
+                cur[i] = inv_rad_curv
+                phd_cur[i] = phd_inv_rad_curv
+                petlat = -Kl[i] * da[i] * max_slopes[i] * inv_rad_curv # 側方侵食速度
+                El[i] = petlat
+                fai[i] = petlat/ero #側方/下方侵食速度比率
+                node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
+
+                for k in range(node_num_at_i):
+                    lat_node = lat_nodes_at_i[k]
+                    if lat_node > 0:
+                        # if the elevation of the lateral node is higher than primary node,
+                        # calculate a new potential lateral erosion (L/T), which is negative
+                        if z[lat_node] > z[i]:
+                            # the calculated potential lateral erosion is mutiplied by the length of the node
+                            # and the bank height, then added to an array, vol_lat_dt, for volume eroded
+                            # laterally  *per timestep* at each node. This vol_lat_dt is reset to zero for
+                            # each timestep loop. vol_lat_dt is added to itself in case more than one primary
+                            # nodes are laterally eroding this lat_node
+                            # volume of lateral erosion per timestep
+                            vol_lat_dt[lat_node] += abs(petlat) * grid.dx * dp[i]
+                            # wd? may be H is true. how calc H ? 
+
+        dzdt[:] = dzver * dt
+        vol_lat[:] += vol_lat_dt * dt
+        # this loop determines if enough lateral erosion has happened to change
+        # the height of the neighbor node.
+        # print(f"len(lat_nodes): {len(lat_nodes)}, len(dwns_nodes): {len(dwnst_nodes)}")
+        for j in range(iterNum):
+            i = dwnst_nodes[j]
+            lat_nodes_at_i = lat_nodes[i]
+
+            #if lat_nodes_at_i[0] != dummy:
+            node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
+
+            for k in range(node_num_at_i):
+                lat_node = lat_nodes_at_i[k]
+                if lat_node > 0:  # greater than zero now bc inactive neighbors are value -1
+                    if z[lat_node] > z[i]:
+                        # vol_diff is the volume that must be eroded from lat_node so that its
+                        # elevation is the same as node downstream of primary node
+                        # UC model: this would represent undercutting (the water height at
+                        # node i), slumping, and instant removal.
+                        if UC:
+                            voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i]]) * grid.dx**2 
+                        # TB model: entire lat node must be eroded before lateral erosion
+                        # occurs
+                        if TB:
+                            voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i]]) * grid.dx**2
+                        # if the total volume eroded from lat_node is greater than the volume
+                        # needed to be removed to make node equal elevation,
+                        # then instantaneously remove this height from lat node. already has
+                        # timestep in it
+                        if vol_lat[lat_node] >= voldiff:
+                            self._dzlat[lat_node] = z[flowdirs[i]] - z[lat_node]  # -0.001
+                            # after the lateral node is eroded, reset its volume eroded to
+                            # zero
+                            vol_lat[lat_node] = 0.0
+        # combine vertical and lateral erosion.
+        dz = dzdt + self._dzlat
+        # change height of landscape
+        z[:] += dz
+
+        return grid, self._dzlat
 
     def run_one_step_ULE_langston(self, dt=1.0):
         """Calculate vertical and lateral erosion for a time period 'dt'.
@@ -1235,4 +1441,140 @@ class LateralEroder(Component):
         )
 
         return grid, self._dzlat   
+    
+
+    def run_one_step_ULE_ffwindow_only_hill(self, dt=1.0):
+        """Calculate vertical and lateral erosion for a time period 'dt'.
+
+        Parameters
+        ----------
+        dt : float
+            Model timestep [T]
+
+        Note
+        ----------
+        側方侵食アルゴリズム
+            ULEmodel regression
+        ノード選定アルゴリズム
+            ffwindow
+
+        lat_nodesの実装がnp.ndarray。
+        アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
+        """
+        Klr = self._Klr
+        grid = self._grid
+        UC = self._UC
+        TB = self._TB
+        inlet_on = self._inlet_on  # this is a true/false flag
+        Kv = self._Kv
+        qs_in = self._qs_in
+        dzdt = self._dzdt
+        alph = self._alph
+        vol_lat = grid.at_node["volume__lateral_erosion"]
+        
+        # kw = 10.0
+        # F = 0.02
+        dp_coef = self._dp_coef
+        dp_exp = self._dp_exp
+        kw = self._wid_coef
+        F = self._F
+        thresh_da = self._thresh_da
+
+        # phd_node_num = 1
+        cur = grid.at_node["curvature"]
+        phd_cur = grid.at_node["phd_curvature"]
+
+        fai_alpha = self._fai_alpha
+        fai_beta = self._fai_beta
+        fai_gamma = self._fai_gamma
+        fai_C = self._fai_C
+
+        z = grid.at_node["topographic__elevation"]
+        # clear qsin for next loop
+        qs_in = grid.add_zeros("sediment__influx", at="node", clobber=True)
+        qs = grid.add_zeros("qs", at="node", clobber=True)
+        dzver = np.zeros(grid.number_of_nodes)
+        El = grid.add_zeros("latero__rate", at="node", clobber=True) 
+        El = grid.at_node["latero__rate"] 
+        fai = grid.add_zeros("fai", at="node", clobber=True)
+        fai = grid.at_node["fai"]
+        vol_lat_dt = np.zeros(grid.number_of_nodes)
+
+        # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
+        # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
+        # or add self.dzlat to itself after each time step.
+        self._dzlat.fill(0.0)
+
+        # critical_erosion_volume_ratio 
+        critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
+
+        if inlet_on is True:
+            inlet_node = self._inlet_node
+            qsinlet = self._qsinlet
+            qs_in[inlet_node] = qsinlet
+            q = grid.at_node["surface_water__discharge"]
+            da = q / grid.dx**2
+        # if inlet flag is not on, proceed as normal.
+        else:
+            if self._use_Q:
+                # water discharge is calculated by flow router
+                da = grid.at_node["surface_water__discharge"]
+            else:
+                # drainage area is calculated by flow router
+                da = grid.at_node["drainage_area"]
+
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
+
+        # water depth in meters, needed for lateral erosion calc
+        dp = grid.at_node["flow_depth"]
+        dp[:] = dp_coef * (da ** dp_exp)
+
+        # add min_Q_or_da
+        da += self._add_min_Q_or_da
+        # flow__upstream_node_order is node array contianing downstream to
+        # upstream order list of node ids
+        s = grid.at_node["flow__upstream_node_order"]
+        max_slopes = grid.at_node["topographic__steepest_slope"]
+        flowdirs = grid.at_node["flow__receiver_node"]
+
+        # make a list l, where node status is interior (signified by label 0) in s
+        # make threshold mask, because apply equation only river. (2022/10/26)
+        interior_mask = np.where(np.logical_and(grid.status_at_node == 0, da >= thresh_da))[0]
+        interior_s = np.intersect1d(s, interior_mask)
+        dwnst_nodes = interior_s.copy()
+        # reverse list so we go from upstream to down stream
+        dwnst_nodes = dwnst_nodes[::-1].astype(np.int32)
+        # lat_nodes = [[-99] for i in range(grid.shape[0]*grid.shape[1])]
+        max_slopes[:] = max_slopes.clip(0)
+
+        _run_one_step_fivebyfive_window_only_hill(
+            grid,
+            dwnst_nodes,
+            flowdirs,
+            z,
+            da,
+            dp,
+            Kv,
+            max_slopes,
+            dzver,
+            cur,
+            phd_cur,
+            El,
+            fai,
+            vol_lat,
+            self._dzlat,
+            dzdt,
+            grid.dx,
+            fai_alpha,
+            fai_beta,
+            fai_gamma,
+            fai_C,
+            dt,
+            critical_erosion_volume_ratio,
+            UC,
+            TB,
+        )
+
+        return grid, self._dzlat  
     
