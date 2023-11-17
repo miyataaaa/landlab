@@ -457,6 +457,12 @@ class LateralEroder(Component):
         else:   
             self._flow_depth = grid.add_zeros("flow_depth", at="node")
 
+        # 何回側方侵食を起こしたかを記録する配列を追加(2023/11/17)
+        if "latero_nums" in grid.at_node:
+            self._latero_nums = grid.at_node["latero_nums"].astype(np.int32)
+        else:
+            self._latero_nums = grid.add_zeros("latero_nums", at="node", dtype=np.int32)
+
 
         # you can specify the type of lateral erosion model you want to use.
         # But if you don't the default is the undercutting-slump model
@@ -593,6 +599,9 @@ class LateralEroder(Component):
         fai = grid.at_node["fai"]
         vol_lat_dt = np.zeros(grid.number_of_nodes)
 
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0 # 何回側方侵食を起こしたかを記録する配列を初期化(2023/11/17)
+
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
         # or add self.dzlat to itself after each time step.
@@ -656,6 +665,8 @@ class LateralEroder(Component):
                 [lat_node, inv_rad_curv] = node_finder(grid, i, flowdirs, da)
                 # node_finder returns the lateral node ID and the radius of curvature
                 lat_nodes[i] = lat_node
+                
+                # # latero_nums[i] = -1 # 河川ノードは侵食が起きない前提で-1を代入(2023/11/17)
 
                 # if the lateral node is not 0 or -1 continue. lateral node may be
                 # 0 or -1 if a boundary node was chosen as a lateral node. then
@@ -674,6 +685,7 @@ class LateralEroder(Component):
                         # nodes are laterally eroding this lat_node
                         # volume of lateral erosion per timestep
                         vol_lat_dt[lat_node] += abs(petlat) * grid.dx * dp[i]
+                        latero_nums[lat_node] += 1 # 何回側方侵食を起こしたかを記録する配列を更新(2023/11/17)
                         # wd? may be H is true. how calc H ? 
 
             # send sediment downstream. sediment eroded from vertical incision
@@ -772,6 +784,9 @@ class LateralEroder(Component):
         cur = grid.at_node["curvature"]
         phd_cur = grid.at_node["phd_curvature"]
 
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0 # 何回側方侵食を起こしたかを記録する配列を初期化(2023/11/17)
+
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
         # or add self.dzlat to itself after each time step.
@@ -857,6 +872,8 @@ class LateralEroder(Component):
                 fai[i] = petlat/ero #側方/下方侵食速度比率
                 node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
 
+                # latero_nums[i] = -1 # 河川ノードは侵食が起きない前提で-1を代入(2023/11/17)
+
                 for k in range(node_num_at_i):
                     lat_node = lat_nodes_at_i[k]
                     if lat_node > 0:
@@ -870,6 +887,7 @@ class LateralEroder(Component):
                             # nodes are laterally eroding this lat_node
                             # volume of lateral erosion per timestep
                             vol_lat_dt[lat_node] += abs(petlat) * grid.dx * dp[i]
+                            latero_nums[lat_node] += 1 # 何回側方侵食を起こしたかを記録する配列を更新(2023/11/17)
                             # wd? may be H is true. how calc H ? 
 
         dzdt[:] = dzver * dt
@@ -968,6 +986,9 @@ class LateralEroder(Component):
         cur = grid.at_node["curvature"]
         phd_cur = grid.at_node["phd_curvature"]
 
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0 # 何回側方侵食を起こしたかを記録する配列を初期化(2023/11/17)
+
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
         # or add self.dzlat to itself after each time step.
@@ -1056,8 +1077,11 @@ class LateralEroder(Component):
                 fai[i] = petlat/ero #側方/下方侵食速度比率
                 node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
 
+                # latero_nums[i] = -1 # 河川ノードは侵食が起きない前提で-1を代入(2023/11/17)
+
                 for k in range(node_num_at_i):
                     lat_node = lat_nodes_at_i[k]
+                    latero_nums[lat_node] += 1 # 何回側方侵食を起こしたかを記録する配列を更新(2023/11/17)
                     if lat_node > 0:
                         # if the elevation of the lateral node is higher than primary node,
                         # calculate a new potential lateral erosion (L/T), which is negative
@@ -1177,6 +1201,9 @@ class LateralEroder(Component):
         fai = grid.at_node["fai"]
         vol_lat_dt = np.zeros(grid.number_of_nodes)
 
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0 # 何回側方侵食を起こしたかを記録する配列を初期化(2023/11/17)
+
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
         # or add self.dzlat to itself after each time step.
@@ -1245,6 +1272,7 @@ class LateralEroder(Component):
                 # node_finder returns the lateral node ID and the radius of curvature
                 lat_nodes[i] = lat_node
                 cur[i] = inv_rad_curv
+                # latero_nums[i] = -1 # 河川ノードは侵食が起きない前提で-1を代入(2023/11/17)
                 # if the lateral node is not 0 or -1 continue. lateral node may be
                 # 0 or -1 if a boundary node was chosen as a lateral node. then
                 # radius of curavature is also 0 so there is no lateral erosion
@@ -1264,6 +1292,7 @@ class LateralEroder(Component):
                         # nodes are laterally eroding this lat_node
                         # volume of lateral erosion per timestep
                         vol_lat_dt[lat_node] += abs(petlat) * grid.dx * dp[i]
+                        latero_nums[lat_node] += 1 # 何回側方侵食を起こしたかを記録する配列を更新(2023/11/17)
                         # wd? may be H is true. how calc H ? 
 
             # send sediment downstream. sediment eroded from vertical incision
@@ -1363,6 +1392,8 @@ class LateralEroder(Component):
         fai = grid.add_zeros("fai", at="node", clobber=True)
         fai = grid.at_node["fai"]
         vol_lat_dt = np.zeros(grid.number_of_nodes)
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0
 
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
@@ -1416,6 +1447,7 @@ class LateralEroder(Component):
             grid,
             dwnst_nodes,
             flowdirs,
+            latero_nums,
             z,
             da,
             dp,
@@ -1499,6 +1531,8 @@ class LateralEroder(Component):
         fai = grid.add_zeros("fai", at="node", clobber=True)
         fai = grid.at_node["fai"]
         vol_lat_dt = np.zeros(grid.number_of_nodes)
+        latero_nums = self._latero_nums
+        latero_nums[:] = 0
 
         # dz_lat needs to be reset. Otherwise, once a lateral node erode's once, it will continue eroding
         # at every subsequent time setp. If you want to track all lateral erosion, create another attribute,
@@ -1552,6 +1586,7 @@ class LateralEroder(Component):
             grid,
             dwnst_nodes,
             flowdirs,
+            latero_nums,
             z,
             da,
             dp,

@@ -415,7 +415,7 @@ cpdef inline void _run_one_step_fivebyfive_window(
 @cython.wraparound(False)
 cpdef inline tuple node_finder_use_fivebyfive_window_ver2(grid, 
                                                           DTYPE_INT_t i, 
-                                                          np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
+                                                          np.ndarray[DTYPE_INT_t, ndim=1] flowdirs,
                                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
                                                           bint is_get_phd_cur=False,
                                                           DTYPE_INT_t dummy_value=-99):
@@ -515,6 +515,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
                                            grid,
                                            np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
                                            np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
+                                           np.ndarray[DTYPE_INT_t, ndim=1] latero_nums,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] z, 
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] da,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dp,
@@ -609,6 +610,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
                         # nodes are laterally eroding this lat_node
                         # volume of lateral erosion per timestep
                         vol_lat_dt[lat_node] += abs(petlat) * dx * dp[i]
+                        latero_nums[lat_node] += 1 # 側方侵食を受けた回数をカウント
                         # wd? may be H is true. how calc H ? 
 
     dzdt[:] = dzver * dt
@@ -996,6 +998,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            grid,
                                            np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
                                            np.ndarray[DTYPE_INT_t, ndim=1] flowdirs, 
+                                           np.ndarray[DTYPE_INT_t, ndim=1] latero_nums, 
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] z, 
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] da,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dp,
@@ -1096,6 +1099,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                         # nodes are laterally eroding this lat_node
                         # volume of lateral erosion per timestep
                         vol_lat_dt[lat_node] += abs(petlat) * dx * dp[i]
+                        latero_nums[lat_node] += 1 # 側方侵食を受けた回数をカウント
                         # wd? may be H is true. how calc H ? 
 
     dzdt[:] = dzver * dt
