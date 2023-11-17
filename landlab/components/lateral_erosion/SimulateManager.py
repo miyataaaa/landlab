@@ -569,7 +569,8 @@ class LataralSimilateManager(HDFhandler):
         Returns
         -------
         mg : RasterModelGrid
-            指定した年の地形を格納したLandlab.RasterModelGridクラスのインスタンス
+            指定した年の地形を格納したLandlab.RasterModelGridクラスのインスタンス.
+            recorded_variablesに指定された変数の値も格納されている。
         """        
 
         z = self.read_oneYr_filedvalue(Yr=Yr, name="topographic__elevation")
@@ -578,8 +579,16 @@ class LataralSimilateManager(HDFhandler):
         dx = self.InitTP_dict['dx']
 
         initTP = InitialTopographyMaker(**self.InitTP_dict)
+        mg = initTP.arbitrary_topography(z=z, ncols=ncols, nrows=nrows, dx=dx)
 
-        return initTP.arbitrary_topography(z=z, ncols=ncols, nrows=nrows, dx=dx)
+        for name in self.recorded_variables:
+            if name == "topographic__elevation":
+                continue
+            value = self.read_oneYr_filedvalue(Yr=Yr, name=name)
+            mg.add_zeros(name, at="node", dtype=float)
+            mg.at_node[name] = value
+
+        return mg
     
     def create_fa(self, mg: RasterModelGrid) -> FlowAccumulator:
 
