@@ -1012,7 +1012,7 @@ class LateralEroder(Component):
         interior_s = np.intersect1d(s, interior_mask)
         dwnst_nodes = interior_s.copy()
         # reverse list so we go from upstream to down stream
-        dwnst_nodes = dwnst_nodes[::-1]
+        dwnst_nodes = dwnst_nodes[::-1].astype(np.int32)
         max_slopes[:] = max_slopes.clip(0)
         iterNum = len(dwnst_nodes)
         dummy_value = -99
