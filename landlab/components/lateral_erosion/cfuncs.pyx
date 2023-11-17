@@ -466,7 +466,7 @@ cpdef inline tuple node_finder_use_fivebyfive_window_ver2(grid,
     for j in range(len(neighbors)):
         neig = neighbors[j]
 
-        if neig == donor_one_ups:
+        if (neig == donor_one_ups) or (neig == -1) or (neig == i) or (neig == donor) or (neig == receiver):
             continue
         else:
             x_neig = grid.x_of_node[neig]
