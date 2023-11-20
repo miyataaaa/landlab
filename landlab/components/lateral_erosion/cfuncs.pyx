@@ -1133,6 +1133,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                     # then instantaneously remove this height from lat node. already has
                     # timestep in it
                     if vol_lat[lat_node] >= voldiff:
+                                        
                         dzlat[lat_node] = z[flowdirs[i]] - z[lat_node]  # -0.001
                         # after the lateral node is eroded, reset its volume eroded to
                         # zero
