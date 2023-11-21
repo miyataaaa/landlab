@@ -585,7 +585,12 @@ class LataralSimilateManager(HDFhandler):
             if name == "topographic__elevation":
                 continue
             value = self.read_oneYr_filedvalue(Yr=Yr, name=name)
-            mg.add_zeros(name, at="node", dtype=float)
+
+            if name in ['flow__receiver_node', 'flow__upstream_node_order']:
+                mg.add_zeros(name, at="node", dtype=int)
+                value = value.astype(int)
+            else:
+                mg.add_zeros(name, at="node", dtype=float)
             mg.at_node[name] = value
 
         return mg
