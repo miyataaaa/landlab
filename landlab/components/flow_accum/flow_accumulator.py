@@ -1020,14 +1020,15 @@ class FlowAccumulator(Component):
                 if p_k in self._kwargs:
                     kw[p_k] = self._kwargs.pop(p_k)
 
+            # "FlowDirectorDINF"にもDepression finder が対応できるように拡張
             # NEED TO TEST WHICH FLOWDIRECTOR WAS PROVIDED.
-            if self._flow_director._name in ("FlowDirectorMFD", "FlowDirectorDINF"):
-                raise NotImplementedError(
-                    "The depression finder only works with route "
-                    "to one FlowDirectors such as "
-                    "FlowDirectorSteepest and  FlowDirectorD8. "
-                    "Provide a different FlowDirector."
-                )
+            # if self._flow_director._name in ("FlowDirectorMFD", "FlowDirectorDINF"):
+            #     raise NotImplementedError(
+            #         "The depression finder only works with route "
+            #         "to one FlowDirectors such as "
+            #         "FlowDirectorSteepest and  FlowDirectorD8. "
+            #         "Provide a different FlowDirector."
+            #     )
 
             # depression finder is provided as a string.
             if isinstance(self._depression_finder_provided, str):
@@ -1121,7 +1122,7 @@ class FlowAccumulator(Component):
         does not handle multiple-flow directors)
         """
         assert isinstance(self._grid, RasterModelGrid)
-        if self._flow_director._name in ("FlowDirectorD8"):
+        if self._flow_director._name in ("FlowDirectorD8", "FlowDirectorDINF"):
             return "D8"
         else:
             return "D4"
@@ -1238,8 +1239,17 @@ class FlowAccumulator(Component):
             a[:], q[:] = self._accumulate_A_Q_to_one(s, r)
 
         else:
+            if (
+                self._depression_finder_provided is not None
+                and update_depression_finder
+            ):
+                # only update depression finder if requested AND if there
+                # are pits, or there were flooded nodes from last timestep.
+                if self.pits_present or self.flooded_nodes_present:
+                    self._depression_finder.update()
             # Get p
             p = self._grid["node"]["flow__receiver_proportions"]
+            # r = as_id_array(self._grid["node"]["flow__receiver_node"])
 
             # step 3. Stack, D, delta construction
             nd = as_id_array(flow_accum_to_n._make_number_of_donors_array_to_n(r, p))
@@ -1255,7 +1265,7 @@ class FlowAccumulator(Component):
             self._D_structure = D
 
             self._grid["node"]["flow__upstream_node_order"][:] = s
-            self._grid["node"]["flow__upstream_node_order"][:] = s
+            # self._grid["node"]["flow__upstream_node_order"][:] = s
 
             # step 4. Accumulate (to one or to N depending on direction method)
             a[:], q[:] = self._accumulate_A_Q_to_n(s, r, p)

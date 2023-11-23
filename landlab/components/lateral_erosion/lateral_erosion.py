@@ -364,15 +364,15 @@ class LateralEroder(Component):
             grid, RasterModelGrid
         ), "LateralEroder requires a sqare raster grid."
 
-        if "flow__receiver_node" in grid.at_node:
-            if grid.at_node["flow__receiver_node"].size != grid.size("node"):
-                msg = (
-                    "A route-to-multiple flow director has been "
-                    "run on this grid. The LateralEroder is not currently "
-                    "compatible with route-to-multiple methods. Use a route-to-"
-                    "one flow director."
-                )
-                raise NotImplementedError(msg)
+        # if "flow__receiver_node" in grid.at_node:
+        #     if grid.at_node["flow__receiver_node"].size != grid.size("node"):
+        #         msg = (
+        #             "A route-to-multiple flow director has been "
+        #             "run on this grid. The LateralEroder is not currently "
+        #             "compatible with route-to-multiple methods. Use a route-to-"
+        #             "one flow director."
+        #         )
+        #         raise NotImplementedError(msg)
 
         solver_list = ("langston", 
                        "ULE")

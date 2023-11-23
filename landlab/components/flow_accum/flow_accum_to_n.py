@@ -52,6 +52,10 @@ from landlab.core.utils import as_id_array
 
 from .cfuncs import _accumulate_to_n, _make_donors_to_n
 
+from collections import deque
+
+from copy import deepcopy
+
 
 class _DrainageStack_to_n:
 
@@ -168,18 +172,22 @@ class _DrainageStack_to_n:
         if visited.size > 0:
             visited_enough = num_visits[visited] == self.num_receivers[visited]
             completed = set(visited[visited_enough])
+            not_completed = set(visited[~visited_enough])
         else:
             completed = {}
+            not_completed
         # recurse through the remainder. Only look above completed nodes,
         # this prevents repeat link walking.
-        while len(completed) > 0:
+        # while len(completed) > 0:
+        while len(not_completed) > 0:
             # increase counter
             i += 1
 
-            visited = set()
-            new_completes = set()
+            # visited = set()
+            # new_completes = set()
 
-            for node_i in completed:
+            # for node_i in completed:
+            for node_i in not_completed:
                 # select the nodes to visit
                 visit = self.D[self.delta[node_i] : self.delta[node_i + 1]]
                 # record the visit time.
@@ -197,13 +205,70 @@ class _DrainageStack_to_n:
                     == self.num_receivers[numpy.array(visit)]
                 )
 
-                visited.update(visit)
-                new_completes.update(visit[visited_enough])
-            completed = new_completes
+                # visited.update(visit)
+                # new_completes.update(visit[visited_enough])
+                new_not_visited = visit[~visited_enough]
+            # completed = new_completes
+            not_completed = set(new_not_visited)
 
         # the stack is the argsort of visit time.
         self.s = numpy.argsort(visit_time, kind="stable")
 
+class _DrainageStack_to_n_2:
+
+    """Implementation of the DrainageStack_to_n class.
+
+    this class use topological sorting to construct a stack with similar properties to
+    the stack constructed by Braun & Willet (2013). It constructs an list, s, of all nodes in the grid.
+    the order of the list is from downstream to upstream.
+
+    It is used by the make_ordered_node_array_to_n() function.
+    """
+
+    def __init__(self, delta, D, num_receivers):
+        """Creates the stack array s and stores references to delta and D.
+
+        Initialization of the _DrainageStack_to_n() class including
+        storing delta and D.
+        """
+
+        self.num_receivers = num_receivers
+        self.s = numpy.zeros(delta.size - 1, dtype=int)
+        self.delta = delta
+        self.D = D
+
+    def construct__stack(self, nodes):
+        
+        """
+        make a stack of nodes from downstream to upstream
+        """        
+        D = self.D
+        delta = self.delta
+
+        s_pointer = 0
+
+        # 最初の状態でレシーバーがないノードのインデックスを取得
+        # print("num_receivers", self.num_receivers)
+        zero_recv_index = numpy.where(self.num_receivers == 0)[0]
+        q = deque(zero_recv_index)
+        # print("q", q)   
+        while q:
+            # print("q", q)
+            # qの先頭のノードを取り出す
+            node_i = q.popleft()
+            self.s[s_pointer] = node_i
+            s_pointer += 1
+
+            # print(f"D[delta[{node_i}]:delta[{node_i + 1}]]: {D[delta[node_i]:delta[node_i + 1]]}")
+            for donor_i in D[delta[node_i] : delta[node_i + 1]]:
+                # print("donor_i", donor_i)
+                self.num_receivers[donor_i] -= 1
+                # print(f"num_receivers[{donor_i}]", self.num_receivers[donor_i])
+                if self.num_receivers[donor_i] == 0:
+                    # print(f"append, donor_{donor_i}")
+                    q.append(donor_i)
+
+        # print("s", self.s)
 
 def _make_number_of_donors_array_to_n(r, p):
     """Number of donors for each node.
@@ -258,8 +323,14 @@ def _make_number_of_donors_array_to_n(r, p):
     # filter r based on p and flatten
     r_filter_flat = r.flatten()[p.flatten() > 0]
 
+    # 一番大きいreceiverのindexを取得.receiver自体がノードの番号なので、
+    # これがノードの数になる
     max_index = numpy.amax(r_filter_flat)
 
+    # bincountでノードiが何回ずつreceiverになっているかをカウントする
+    # 例えば、r_filter_flat = [1, 2, 1, 5, 6, 2, 4, 5, 6, 7, 4, 5, 6, 7, 8]
+    # という配列があった場合、bincount(r_filter_flat)は
+    # [0, 2, 2, 0, 4, 4, 2, 3, 1, 0]となる
     nd[: (max_index + 1)] = numpy.bincount(r_filter_flat)
     return nd
 
@@ -293,8 +364,8 @@ def _make_delta_array_to_n(nd):
     >>> sum(nd) == max(delta)
     True
     """
-    nt = sum(nd)
-    np = len(nd)
+    nt = sum(nd) # total number of donors
+    np = len(nd) # nd.shape = r.shape[0],
     delta = numpy.zeros(np + 1, dtype=int)
     delta.fill(nt)
     delta[-2::-1] -= numpy.cumsum(nd[::-1])
@@ -406,8 +477,9 @@ def make_ordered_node_array_to_n(
     >>> len(set([0, 3, 8])-set(s[6:9]))
     0
     """
-    node_id = numpy.arange(receiver_nodes.shape[0])
-    baselevel_nodes = numpy.where(node_id == receiver_nodes[:, 0])[0]
+
+    # node_id = numpy.arange(receiver_nodes.shape[0]) # this is the old (2023/11/22)
+    # baselevel_nodes = numpy.where(node_id == receiver_nodes[:, 0])[0]  # this is the old (2023/11/22)
     if nd is None:
         nd = _make_number_of_donors_array_to_n(receiver_nodes, receiver_proportion)
     if delta is None:
@@ -415,12 +487,28 @@ def make_ordered_node_array_to_n(
     if D is None:
         D = _make_array_of_donors_to_n(receiver_nodes, receiver_proportion, delta)
 
-    num_receivers = numpy.sum(receiver_nodes >= 0, axis=1)
+    # num_receivers = numpy.sum(receiver_nodes >= 0, axis=1) #, this is the old (2023/11/22)
 
-    dstack = _DrainageStack_to_n(delta, D, num_receivers)
-    construct_it = dstack.construct__stack
+    # new method 
+    receiver_nodes_copy = deepcopy(receiver_nodes)
+    no_receiver_flag = numpy.where(receiver_nodes_copy[:, 0] == numpy.arange(receiver_nodes_copy.shape[0]))[0]
+    receiver_nodes_copy[no_receiver_flag, 0] = -1
+    # print("receiver_nodes_copy", receiver_nodes_copy)
+    num_receivers = numpy.count_nonzero(receiver_nodes_copy >= 0, axis=1)
+    # print("num_receivers[150:170]", num_receivers[150:170])
+    # print("receiver_nodes_copy[150:170]", receiver_nodes_copy[150:170])
+    # print("num_receivers")
 
-    construct_it(baselevel_nodes)  # don't think this is a bottleneck, so no C++
+    # dstack = _DrainageStack_to_n(delta, D, num_receivers)  # this is the old (2023/11/22)
+    # construct_it = dstack.construct__stack # this is the old (2023/11/22)
+
+    # construct_it(baselevel_nodes)  # don't think this is a bottleneck, so no C++ 
+
+    # new method
+    nodes = numpy.arange(receiver_nodes.shape[0])
+    dstack = _DrainageStack_to_n_2(delta, D, num_receivers)
+    dstack.construct__stack(nodes)
+
     return dstack.s
 
 

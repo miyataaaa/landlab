@@ -11,7 +11,7 @@ from ...core.model_component import Component
 from ...core.utils import as_id_array
 from ...field import FieldError
 from ...grid import RasterModelGrid
-from ..flow_accum import flow_accum_bw
+from ..flow_accum import flow_accum_bw, flow_accum_to_n
 from .cfuncs import find_lowest_node_on_lake_perimeter_c
 from .floodstatus import FloodStatus
 
@@ -239,18 +239,20 @@ class DepressionFinderAndRouter(Component):
             else:
                 self._num_nbrs = self._grid.links_at_node.shape[1]
 
-        if "flow__receiver_node" in self._grid.at_node and self._grid.at_node[
-            "flow__receiver_node"
-        ].size != self._grid.size("node"):
-            raise NotImplementedError(
-                "A route-to-multiple flow director has been "
-                "run on this grid. The depression finder is "
-                "not compatible with the grid anymore. Use "
-                "DepressionFinderAndRouter with reroute_flow=True "
-                "only with route-to-one methods. If using this "
-                "component with such a flow directing method is desired "
-                "please open a GitHub Issue/"
-            )
+        # FlowDirectorDinfクラスにも対応できるように拡張する
+        # if "flow__receiver_node" in self._grid.at_node and self._grid.at_node[
+        #     "flow__receiver_node"
+        # ].size != self._grid.size("node"):
+        #     raise NotImplementedError(
+        #         "A route-to-multiple flow director has been "
+        #         "run on this grid. The depression finder is "
+        #         "not compatible with the grid anymore. Use "
+        #         "DepressionFinderAndRouter with reroute_flow=True "
+        #         "only with route-to-one methods. If using this "
+        #         "component with such a flow directing method is desired "
+        #         "please open a GitHub Issue/"
+        #     )
+        self._is_DINF = False if self._grid.at_node["flow__receiver_node"].ndim == 1 else True # FlowDirectorDinfクラスにも対応できるように拡張する
 
         # Make sure the grid includes elevation data.
         self._elev = self._grid.at_node["topographic__elevation"]
@@ -908,12 +910,32 @@ class DepressionFinderAndRouter(Component):
         self._identify_depressions_and_outlets(self._reroute_flow)
 
         if self._reroute_flow and ("flow__receiver_node" in self._grid.at_node):
-            self._receivers = self._grid.at_node["flow__receiver_node"]
-            self._sinks = self._grid.at_node["flow__sink_flag"]
-            self._grads = self._grid.at_node["topographic__steepest_slope"]
-            self._links = self._grid.at_node["flow__link_to_receiver_node"]
-            self._route_flow()
-            self._reaccumulate_flow()
+            if not self._is_DINF:
+                self._receivers = self._grid.at_node["flow__receiver_node"]
+                self._sinks = self._grid.at_node["flow__sink_flag"]
+                self._grads = self._grid.at_node["topographic__steepest_slope"]
+                self._links = self._grid.at_node["flow__link_to_receiver_node"]
+                self._route_flow()
+                self._reaccumulate_flow()
+            else:
+                # ２つのレシーバーが同じセル場合、片方を-1にする
+                eq_flag = self._grid.at_node["flow__receiver_node"][:, 0] == self._grid.at_node["flow__receiver_node"][:, 1]
+                self._grid.at_node["flow__receiver_node"][eq_flag, 1] = -1
+                self._grid.at_node["flow__receiver_proportions"][eq_flag, :] = [1.0, 0.0]
+                # DINFアルゴリズムの場合、流れの方向は最大で2方向になる
+                # ‘flow__receiver_node’, ‘flow__link_to_receiver_node’. 
+                # "topographic__steepest_slope", "flow__receiver_proportions"のshapeは(nnodes, 2)になる
+                # 窪地になっているところでは、proportionsのうち、大きい方の値だけを採用して、
+                # その方向に流れるようにする
+                self._proportions = self._grid.at_node["flow__receiver_proportions"] # shape = (nnodes, 2)
+                self.more_flow_nodes = np.where(self._proportions > 0.5)
+                self.less_flow_nodes = np.where(self._proportions <= 0.5)
+                self._receivers = self._grid.at_node["flow__receiver_node"][self.more_flow_nodes]
+                self._sinks = self._grid.at_node["flow__sink_flag"]
+                self._grads = self._grid.at_node["topographic__steepest_slope"][self.more_flow_nodes]
+                self._links = self._grid.at_node["flow__link_to_receiver_node"][self.more_flow_nodes]
+                self._route_flow()
+                self._reaccumulate_flow_DINF()
 
     def _find_unresolved_neighbors(self, nbrs, receivers):
         """Make and return list of neighbors of node with unresolved flow dir.
@@ -970,6 +992,49 @@ class DepressionFinderAndRouter(Component):
         ur_nbrs = nbrs[unresolved]
         ur_links = nbr_links[unresolved]
         return (ur_nbrs, ur_links)
+    
+    def _reroute_subflow(self, node_id, donor_id):
+
+        # print(f"rerouting subflow..., node_id: {node_id}, donor_id: {donor_id}")
+        receiver_id = self._receivers[node_id]
+        main_c_id = self.more_flow_nodes[1][receiver_id]
+        sub_c_id = self.less_flow_nodes[1][receiver_id]
+
+        # print(f"main_c_id: {main_c_id}, sub_c_id: {sub_c_id}")
+        if (self._grid.at_node["flow__receiver_node"][node_id, main_c_id] == donor_id):# and (sub_c_id != -1):
+            main_c_id = sub_c_id
+
+        main_c_receiver = self._grid.at_node["flow__receiver_node"][node_id, main_c_id]
+        main_c_link = self._grid.at_node["flow__link_to_receiver_node"][node_id, main_c_id]
+        main_c_slope = self._grid.at_node["topographic__steepest_slope"][node_id, main_c_id]
+        
+        self._grid.at_node["flow__receiver_node"][node_id] =[main_c_receiver, -1]
+        self._grid.at_node["flow__link_to_receiver_node"][node_id] = [main_c_link, -1]
+        self._grid.at_node["topographic__steepest_slope"][node_id] = [main_c_slope, -1]
+        self._grid.at_node["flow__receiver_proportions"][node_id] = [1.0, 0.0]
+
+        # print(f"node_{node_id} rerouted to node_{main_c_receiver}")
+        # print(f"flow_link: {main_c_link}")
+
+    def _check_subchannel(self, node_id):
+
+        receiver_id = self._receivers[node_id]
+        receivers_of_dws_node = (self._grid.at_node["flow__receiver_node"][receiver_id])
+        receiver_of_main_c_of_dws_node = receivers_of_dws_node[self.more_flow_nodes[1][receiver_id]]
+        receiver_of_sub_c_of_dws_node = receivers_of_dws_node[self.less_flow_nodes[1][receiver_id]]
+
+        if node_id in receivers_of_dws_node:
+            # print(f"receiver_of_dws_node: {receivers_of_dws_node}")
+            if receiver_of_main_c_of_dws_node == node_id:
+                print(f"node_{node_id} <-> node_{receiver_of_main_c_of_dws_node}, main_c")
+            else:
+                # print(f"node_{node_id} <-> node_{receiver_of_sub_c_of_dws_node}, sub_c")
+                self._reroute_subflow(receiver_id, node_id)
+
+    def _check_nbrs(self, nbrs):
+
+        for nbr in nbrs:
+            self._check_subchannel(nbr)
 
     def _route_flow_for_one_lake(self, outlet, lake_nodes):
         """Route flow across a single lake. Alternative to part of _route_flow.
@@ -1031,7 +1096,9 @@ class DepressionFinderAndRouter(Component):
         counter = 0  # counts # of times thru loop as fail-safe
         done = False
         while not done:
+            # print(f"\nnodes_being_processed: {nodes_being_processed}")
             # Get unresolved "regular" neighbors of the current nodes
+            # print("\nregular")
             for cn in nodes_being_processed:
                 # Get active and unresolved neighbors of cn
                 (nbrs, lnks) = self._find_unresolved_neighbors_new(
@@ -1039,15 +1106,44 @@ class DepressionFinderAndRouter(Component):
                     self._grid.links_at_node[cn],
                     self._receivers,
                 )
+                # print("cn", cn, "unsr_nbrs", nbrs, "unsr_lnks", lnks)
                 # They will now flow to cn
                 if nbrs.size > 0:
-                    self._receivers[nbrs] = cn
-                    if "flow__link_to_receiver_node" in self._grid.at_node:
-                        self._links[nbrs] = lnks
-                        slopes = (
-                            self._elev[nbrs] - self._elev[cn]
-                        ) / self._grid.length_of_link[lnks]
-                        self._grads[nbrs] = np.maximum(slopes, 0.0)
+                    # print(f"change receivers, node_{nbrs}'s receiver is node_{cn}")
+                    if self._is_DINF:
+                        # 2次元配列で書き換えが上手くいかないので直接gridの属性を書き換える
+                        # self._receiversはself._grid.at_node["flow__receiver_node"][self.more_flow_nodes]であり、
+                        # もとの２次元配列の一部を参照している。これに対して以下のように
+                        # self._receivers[nbrs] = cn
+                        # と書くと、self._receivers参照の参照を変更してしまうので、もとの２次元配列の一部は変更されない。
+                        # そのため、以下のように直接gridの属性を書き換える必要がある。
+                        # さらに、self._recievers, self._links, self._gradsはこのメソッドを呼び出している
+                        # self._route_flow_for_one_lake()メソッドの中で随時値を更新しながら使われている。
+                        # そのため、self._receivers[nbrs] = cnのように書き換える必要もある。
+
+                        self._grid.at_node["flow__receiver_node"][nbrs, self.more_flow_nodes[1][nbrs]] = cn
+                        self._receivers[nbrs] = cn
+                        if "flow__link_to_receiver_node" in self._grid.at_node:
+                            self._links[nbrs] = lnks
+                            self._grid.at_node["flow__link_to_receiver_node"][nbrs, self.more_flow_nodes[1][nbrs]] = lnks
+                            slopes = (
+                                self._elev[nbrs] - self._elev[cn]
+                            ) / self._grid.length_of_link[lnks]
+                            self._grads[nbrs] = np.maximum(slopes, 0.0)
+                            self._grid.at_node["topographic__steepest_slope"][nbrs, self.more_flow_nodes[1][nbrs]] = np.maximum(slopes, 0.0)
+                        # print(f"\nchange receiver of node_{nbrs} to node_{cn}, line 1128")
+                        self._check_nbrs(nbrs)
+                            
+                    else:
+                        self._receivers[nbrs] = cn
+                        if "flow__link_to_receiver_node" in self._grid.at_node:
+                            self._links[nbrs] = lnks
+                            slopes = (
+                                self._elev[nbrs] - self._elev[cn]
+                            ) / self._grid.length_of_link[lnks]
+                            self._grads[nbrs] = np.maximum(slopes, 0.0)
+
+                    # print(f'self._grid.at_node["flow__receiver_node"][self.more_flow_nodes][nbrs]->{self._grid.at_node["flow__receiver_node"][self.more_flow_nodes][nbrs]}')
 
                 # Place them on the list of nodes to process next
                 for n in nbrs:
@@ -1056,6 +1152,7 @@ class DepressionFinderAndRouter(Component):
             # If we're working with a raster that has diagonals, do the same
             # for the diagonal neighbors
             if self._D8:
+                # print("\ndiagonal")
                 # Get unresolved "regular" neighbors of the current nodes
                 for cn in nodes_being_processed:
                     (nbrs, diags) = self._find_unresolved_neighbors_new(
@@ -1063,15 +1160,34 @@ class DepressionFinderAndRouter(Component):
                         self._grid.d8s_at_node[cn, 4:],
                         self._receivers,
                     )
+                    # print("cn", cn, "unsr_nbrs", nbrs, "unsr_lnks", lnks)
                     # They will now flow to cn
                     if nbrs.size > 0:
-                        self._receivers[nbrs] = cn
-                        if "flow__link_to_receiver_node" in self._grid.at_node:
-                            self._links[nbrs] = diags
-                            slopes = (
-                                self._elev[nbrs] - self._elev[cn]
-                            ) / self._diag_link_length
-                            self._grads[nbrs] = np.maximum(slopes, 0.0)
+                        # print(f"change receivers, node_{nbrs}'s receiver is node_{cn}")
+
+                        if self._is_DINF:
+                            self._grid.at_node["flow__receiver_node"][nbrs, self.more_flow_nodes[1][nbrs]] = cn
+                            self._receivers[nbrs] = cn
+                            if "flow__link_to_receiver_node" in self._grid.at_node:
+                                self._links[nbrs] = diags
+                                self._grid.at_node["flow__link_to_receiver_node"][nbrs, self.more_flow_nodes[1][nbrs]] = diags
+                                slopes = (
+                                    self._elev[nbrs] - self._elev[cn]
+                                ) / self._diag_link_length
+                                self._grads[nbrs] = np.maximum(slopes, 0.0)
+                                self._grid.at_node["topographic__steepest_slope"][nbrs, self.more_flow_nodes[1][nbrs]] = np.maximum(slopes, 0.0)
+                            # print(f"change receiver of node_{nbrs} to node_{cn}, line1173")
+                            self._check_nbrs(nbrs)
+                        else:
+                            self._receivers[nbrs] = cn
+                            if "flow__link_to_receiver_node" in self._grid.at_node:
+                                self._links[nbrs] = diags
+                                slopes = (
+                                    self._elev[nbrs] - self._elev[cn]
+                                ) / self._diag_link_length
+                                self._grads[nbrs] = np.maximum(slopes, 0.0)
+
+                        # print(f'self._grid.at_node["flow__receiver_node"][self.more_flow_nodes][nbrs]->{self._grid.at_node["flow__receiver_node"][self.more_flow_nodes][nbrs]}')
 
                     # Place them on the list of nodes to process next
                     for n in nbrs:
@@ -1093,8 +1209,9 @@ class DepressionFinderAndRouter(Component):
         Route flow across lake flats, which have already been
         identified.
         """
-
+         
         # Process each lake.
+        # lake_codesは、グリッド上に存在する各窪地に対する固有のコード
         for outlet_node, lake_code in zip(self.lake_outlets, self.lake_codes):
             # Get the nodes in the lake
             nodes_in_lake = np.where(self._lake_map == lake_code)[0]
@@ -1108,6 +1225,11 @@ class DepressionFinderAndRouter(Component):
 
                     # set receiver for new outlet.
                     self._receivers[outlet_node] = new_receiver
+                    
+                    if self._is_DINF:
+                        self._grid.at_node["flow__receiver_node"][outlet_node, self.more_flow_nodes[1][outlet_node]] = new_receiver
+                        # print(f"change receiver of node_{outlet_node} to node_{new_receiver}, line1225, o")
+                        self._check_subchannel(outlet_node)
 
                 # reset_link for new outlet
                 outlet_receiver = self._receivers[outlet_node]
@@ -1131,8 +1253,12 @@ class DepressionFinderAndRouter(Component):
                     new_link = self._grid.BAD_INDEX
                 if np.min(new_link) == np.max(new_link) and np.min(new_link) == -1:
                     self._links[outlet_node] = -1
+                    if self._is_DINF:
+                        self._grid.at_node["flow__link_to_receiver_node"][outlet_node, self.more_flow_nodes[1][outlet_node]] = -1
                 else:
                     self._links[outlet_node] = new_link
+                    if self._is_DINF:
+                        self._grid.at_node["flow__link_to_receiver_node"][outlet_node, self.more_flow_nodes[1][outlet_node]] = new_link
 
                 # make a check
                 assert (
@@ -1140,7 +1266,25 @@ class DepressionFinderAndRouter(Component):
                 ), "outlet of lake drains to itself!"
 
                 # Route flow
+                # print("\ncalling _route_flow_for_one_lake()")
+                # print("outlet_node", outlet_node, "nodes_in_lake", nodes_in_lake)
                 self._route_flow_for_one_lake(outlet_node, nodes_in_lake)
+
+         
+        if self._is_DINF:
+            # ２つのレシーバーが同じセル場合、片方を-1にする
+            eq_flag = self._grid.at_node["flow__receiver_node"][:, 0] == self._grid.at_node["flow__receiver_node"][:, 1]
+            self._grid.at_node["flow__receiver_node"][eq_flag, 1] = -1
+            self._grid.at_node["flow__receiver_proportions"][eq_flag, :] = [1.0, 0.0]
+            # 自分自身に流れていない、かつ割合が0のセルは-1にする
+            flag_0 = self._grid.at_node["flow__receiver_node"][:, 0] != np.arange(self._grid.number_of_nodes)
+            flag_1 = self._grid.at_node["flow__receiver_node"][:, 1] != -1
+            tow_r_cell_flag = np.logical_and(flag_0, flag_1) # 自分自身に流れていない、かつ２方向に流れているセル
+            one_prop_flag = np.logical_and(self._grid.at_node["flow__receiver_proportions"][:, 0] == 1.0, self._grid.at_node["flow__receiver_proportions"][:, 1] == 0.0) # 割合が1:0のセル
+            fix_flag = np.logical_and(tow_r_cell_flag, one_prop_flag)
+            self._grid.at_node["flow__receiver_node"][fix_flag, 1] = -1
+
+         
 
         self._sinks[self._pit_node_ids] = False
 
@@ -1157,6 +1301,31 @@ class DepressionFinderAndRouter(Component):
 
         self._a, q, s = flow_accum_bw.flow_accumulation(
             self._receivers, node_cell_area=areas, runoff_rate=Q_in
+        )
+
+        # finish the property updating:
+        self._grid.at_node["drainage_area"][:] = self._a
+        self._grid.at_node["surface_water__discharge"][:] = q
+        self._grid.at_node["flow__upstream_node_order"][:] = s
+
+    def _reaccumulate_flow_DINF(self):
+        """Update drainage area, discharge, upstream order, and flow link.
+
+        Invoke the accumulator a second time to update drainage area,
+        discharge, and upstream order for DINF algorithm.
+        """
+        # Calculate drainage area, discharge, and downstr->upstr order
+        Q_in = self._grid.at_node["water__unit_flux_in"]
+        areas = self._grid.cell_area_at_node.copy()
+        areas[self._grid.closed_boundary_nodes] = 0.0
+
+        # self._receiversはpropotionの大きい方の方向に流れるようになっている.
+        # つまり、１次元配列として用意しているが、以下の関数では、2次元の配列として扱う必要があるので
+        # 新たに変数を用意する
+        recivers = self._grid.at_node["flow__receiver_node"]
+
+        self._a, q, s = flow_accum_to_n.flow_accumulation_to_n(
+            recivers, self._proportions, node_cell_area=areas, runoff_rate=Q_in
         )
 
         # finish the property updating:
