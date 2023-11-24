@@ -33,8 +33,8 @@ cpdef inline DTYPE_FLOAT_t calculate_angle(DTYPE_FLOAT_t xd, DTYPE_FLOAT_t yd,
          DTYPE_FLOAT_t di_x, di_y, ir_x, ir_y, dot_product, di_length, ir_length, angle_cosine, angle_radian
     
     # ベクトルdiの成分を計算
-    di_x = xi - xd
-    di_y = yi - yd
+    di_x = xd - xi
+    di_y = yd - yi
 
     # ベクトルirの成分を計算
     ir_x = xr - xi
@@ -120,7 +120,7 @@ cpdef inline DTYPE_INT_t find_n_upstream_nodes(DTYPE_INT_t i,
         j += 1
 
     return doner
-    
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cpdef inline DTYPE_INT_t find_n_downstream_nodes(DTYPE_INT_t i, 
@@ -140,6 +140,86 @@ cpdef inline DTYPE_INT_t find_n_downstream_nodes(DTYPE_INT_t i,
         j += 1
 
     return receiver
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline DTYPE_INT_t find_upstream_nodes_for2receiver(DTYPE_INT_t i, 
+                                                        np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                                        np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area) except -1:
+
+    """
+    ノードiの上流側のノードのindexを返す。
+    上流側ノードが複数ある場合は、その中で最も流域面積が大きいノードのindexを返す。
+    flowdirsの要素はint型で、ノードiの流向方向のノードのindexを表す。
+    drain_areaの要素はfloat型で、ノードiの流域面積を表す。
+    """
+    cdef:
+        DTYPE_INT_t donor, ran_num, maxinfln
+        DTYPE_FLOAT_t drmax
+        np.ndarray[DTYPE_INT_t, ndim=1] ups_nodes 
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] drin
+        np.ndarray[DTYPE_INT_t, ndim=1] maxinfl
+
+    ups_nodes = np.where(flowdirs == i)[0].astype(np.int32) # 型に注意。ファイル先頭で定義したDTYPE_INT_tを使う。
+
+    # if there are more than 1 donors, find the one with largest drainage area
+    if len(ups_nodes) > 1:
+        
+        drin = drain_area[ups_nodes]
+        drmax = max(drin)
+        maxinfl = ups_nodes[np.where(drin == drmax)]
+
+        # if donor nodes have same drainage area, choose one randomly
+        if len(maxinfl) > 1:
+            ran_num = np.random.randint(0, len(maxinfl))
+            maxinfln = maxinfl[ran_num]
+            donor = maxinfln
+        else:
+            donor = maxinfl
+
+        # if inflow is empty, no donor
+    elif len(ups_nodes) == 0:
+        donor = i
+    # else donor is the only one
+    else:
+        donor = ups_nodes[0]
+
+    return donor  # Return the first element (int) as the result
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline DTYPE_INT_t find_downstream_nodes_for2receiver(DTYPE_INT_t i, 
+                                                            np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area,
+                                                            ) except -1:
+
+    cdef np.ndarray[DTYPE_INT_t, ndim=1] receiver = flowdirs[i]
+
+    if (receiver[0] != -1) and (receiver[1] != -1):
+        if drain_area[receiver[0]] > drain_area[receiver[1]]:
+            return receiver[0]
+        else:
+            return receiver[1]
+    elif (receiver[0] != -1) and (receiver[1] == -1):
+        return receiver[0]
+    else:
+        return i
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline DTYPE_FLOAT_t calc_curvature(DTYPE_FLOAT_t theta,
+                                          DTYPE_FLOAT_t dy) except -1:
+                                        
+    cdef DTYPE_FLOAT_t curvature = 0.0
+
+    if (theta <= np.deg2rad(10.0)):
+        theta = np.deg2rad(10.0)
+    elif (theta >= np.deg2rad(170.0)):
+        theta = np.deg2rad(170.0)
+
+    curvature = 2 / (dy * (np.tan(theta/2)**2))
+
+    return curvature
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -260,20 +340,28 @@ cpdef inline tuple node_finder_use_fivebyfive_window(grid,
 
     cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
     
-    if np.isclose(angle, 0.0) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8)
-    else:
-        angle = np.pi - angle
-    
-    cdef DTYPE_FLOAT_t ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    cdef DTYPE_FLOAT_t d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5
-    radcurv = angle / ds
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+
     
     if is_get_phd_cur:
         donor = find_upstream_nodes(i, flowdirs, drain_area)
         cur = grid.at_node["curvature"]
         phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
 
     cdef tuple result = (lat_nodes, radcurv, phd_radcurv)
 
@@ -488,22 +576,29 @@ cpdef inline tuple node_finder_use_fivebyfive_window_ver2(grid,
                 lat_nodes[k] = neig
                 k += 1
 
-    cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec) # radian
     
-    if np.isclose(angle, 0.0) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8)
-    else:
-        angle = np.pi - angle
-    
-    cdef DTYPE_FLOAT_t ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    cdef DTYPE_FLOAT_t d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5
-    radcurv = angle / ds
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+
     
     if is_get_phd_cur:
         donor = find_upstream_nodes(i, flowdirs, drain_area)
         cur = grid.at_node["curvature"]
         phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
 
     cdef tuple result = (lat_nodes, radcurv, phd_radcurv)
 
@@ -730,20 +825,28 @@ cpdef inline tuple node_finder_use_fivebyfive_window_diag(grid,
 
     cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
     
-    if np.isclose(angle, 0.0) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8)
-    else:
-        angle = np.pi - angle
-    
-    cdef DTYPE_FLOAT_t ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    cdef DTYPE_FLOAT_t d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5
-    radcurv = angle / ds
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+
     
     if is_get_phd_cur:
         donor = find_upstream_nodes(i, flowdirs, drain_area)
         cur = grid.at_node["curvature"]
         phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
 
     cdef tuple result = (lat_nodes, radcurv, phd_radcurv)
 
@@ -973,22 +1076,30 @@ cpdef inline tuple node_finder_use_fivebyfive_window_only_hill(grid,
 
     cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
     
-    if np.isclose(angle, 0.0) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8)
-    else:
-        angle = np.pi - angle
-    
-    cdef DTYPE_FLOAT_t ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    cdef DTYPE_FLOAT_t d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5
-    radcurv = angle / ds
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+
     
     if is_get_phd_cur:
         donor = find_upstream_nodes(i, flowdirs, drain_area)
         cur = grid.at_node["curvature"]
         phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
 
-    cdef tuple result = (lat_nodes, radcurv, phd_radcurv)
+    cdef tuple result = (lat_nodes, radcurv, phd_radcurv, angle)
 
     return result
 
@@ -1007,6 +1118,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzver,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] cur,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] phd_cur,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] flow_angle,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] El,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] fai,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat,
@@ -1021,6 +1133,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            double critical_erosion_volume_ratio,
                                            bint UC,
                                            bint TB,
+                                           bint is_get_phd_cur=True,
                                            ):
 
     # _run_one_step_fivebyfive_window_only_hillはver2の派生形で、
@@ -1031,7 +1144,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
          DTYPE_INT_t i, j, k, node_num_at_i, lat_node
          DTYPE_INT_t iterNum = len(dwnst_nodes)
          DTYPE_INT_t nodeNum = grid.shape[0]*grid.shape[1]
-         DTYPE_FLOAT_t inv_rad_curv, phd_inv_rad_curv, R, S, ero
+         DTYPE_FLOAT_t inv_rad_curv, phd_inv_rad_curv, R, S, ero, angle
          DTYPE_FLOAT_t petlat = 0. # potential lateral erosion initially set to 0
     cdef np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat_dt = np.zeros(grid.number_of_nodes)
     cdef double epsilon = 1e-10
@@ -1063,12 +1176,12 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
             # node_finder picks the lateral node to erode based on angle
             # between segments between five nodes
             # node_finder returns the lateral node ID and the curvature and phase delay curvature
-            lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv = node_finder_use_fivebyfive_window_only_hill(grid, 
+            lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv, angle = node_finder_use_fivebyfive_window_only_hill(grid, 
                                                                                                         i, 
                                                                                                         flowdirs, 
                                                                                                         da, 
                                                                                                         dwnst_nodes,
-                                                                                                        is_get_phd_cur=True,
+                                                                                                        is_get_phd_cur=is_get_phd_cur,
                                                                                                         dummy_value=dummy_value,
                                                                                                         )
 
@@ -1077,6 +1190,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
             lat_nodes[i] = lat_nodes_at_i
             cur[i] = inv_rad_curv
             phd_cur[i] = phd_inv_rad_curv
+            flow_angle[i] = angle # rad
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
@@ -1135,6 +1249,319 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                     if vol_lat[lat_node] >= voldiff:
                                         
                         dzlat[lat_node] = z[flowdirs[i]] - z[lat_node]  # -0.001
+                        # after the lateral node is eroded, reset its volume eroded to
+                        # zero
+                        vol_lat[lat_node] = 0.0
+    # combine vertical and lateral erosion.
+    dz = dzdt + dzlat
+    # change height of landscape
+    z[:] += dz
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline tuple calc_downstream_coords(grid, 
+                                          DTYPE_INT_t i, 
+                                          np.ndarray[DTYPE_INT_t, ndim=2] flowdirs,  
+                                          np.ndarray[DTYPE_FLOAT_t, ndim=2]flow_propotions,
+                                          ):
+
+    """
+    ノードiの下流側のノードの座標を計算する。flow_propotionsをもとに内分点を計算する。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array. shape=(grid.number_of_nodes, 2)
+    flow_propotions : array
+        array of flow propotion of each node, shape=(grid.number_of_nodes, 2)
+    Returns
+    -------
+    _type_
+        _description_
+    """    
+
+    cdef np.ndarray[DTYPE_INT_t, ndim=1] receivers = flowdirs[i]
+    cdef DTYPE_FLOAT_t x_rec, y_rec, x_rec_0, y_rec_0, x_rec_1, y_rec_1
+    cdef DTYPE_INT_t receiver_0, receiver_1
+
+    if (receivers[0] != -1) and (receivers[1] == -1):
+        # ノードiが最下流ノードの場合
+        x_rec = grid.x_of_node[receivers[0]]
+        y_rec = grid.y_of_node[receivers[0]]
+
+    elif (receivers[0] != -1) and (receivers[1] != -1):
+        receiver_0 = receivers[0]
+        receiver_1 = receivers[1]
+        x_rec_0 = grid.x_of_node[receiver_0]
+        y_rec_0 = grid.y_of_node[receiver_0]
+        x_rec_1 = grid.x_of_node[receiver_1]
+        y_rec_1 = grid.y_of_node[receiver_1]
+        x_rec = x_rec_0 * flow_propotions[i][0] + x_rec_1 * flow_propotions[i][1]
+        y_rec = y_rec_0 * flow_propotions[i][0] + y_rec_1 * flow_propotions[i][1]
+
+    cdef tuple result = (x_rec, y_rec)
+
+    return result
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline tuple node_finder_for_flowdirdinf(grid, 
+                                                DTYPE_INT_t i, 
+                                                np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                                np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
+                                                np.ndarray[DTYPE_FLOAT_t, ndim=2]flow_propotions,
+                                                np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
+                                                bint is_get_phd_cur=False,
+                                                DTYPE_INT_t dummy_value=-99,
+                                                ):
+
+    # node_finder_use_fivebyfive_window_only_hillはver2の派生形で、
+    # 側方侵食対象ノードに河川ノードを含めず、ヒルスロープ領域のノードだけを含める
+    # dwnst_nodesは河川ノードが格納された配列
+    
+    cdef np.ndarray[DTYPE_INT_t, ndim=1] lat_nodes = np.full(shape=(4), fill_value=dummy_value)
+
+    lat_nodes = lat_nodes.astype(dtype=np.int32)
+
+    cdef DTYPE_FLOAT_t radcurv = 0.0
+    cdef DTYPE_FLOAT_t phd_radcurv = 0.0
+    
+    cdef DTYPE_INT_t  n = 1
+    cdef DTYPE_INT_t  donor = find_upstream_nodes_for2receiver(i, flowdirs, drain_area)
+    cdef DTYPE_INT_t  receiver = find_downstream_nodes_for2receiver(i, flowdirs, drain_area,)
+
+    if donor == i or receiver == i:
+        return lat_nodes, radcurv, phd_radcurv
+
+    cdef DTYPE_INT_t  side_flag = np.random.choice([-1, 1])
+    cdef DTYPE_FLOAT_t x_don = grid.x_of_node[donor]
+    cdef DTYPE_FLOAT_t y_don = grid.y_of_node[donor]
+    cdef DTYPE_FLOAT_t x_i = grid.x_of_node[i]
+    cdef DTYPE_FLOAT_t y_i = grid.y_of_node[i]
+    cdef DTYPE_FLOAT_t x_rec, y_rec
+    x_rec, y_rec = calc_downstream_coords(grid, i, flowdirs, flow_propotions)
+
+    cdef np.ndarray[DTYPE_INT_t, ndim=1] neighbors = grid.active_adjacent_nodes_at_node[i]
+
+    #cdef list temp_lat_nodes = []
+    #cdef np.ndarray[DTYPE_INT_t, ndim=2] temp_lat_nodes = np.full(shape=(4), fill_value=dummy_value)
+
+    cdef DTYPE_INT_t j = 0
+    cdef DTYPE_INT_t k = 0
+    cdef DTYPE_INT_t neig = 0
+    cdef:
+        DTYPE_FLOAT_t x_neig, y_neig
+        DTYPE_INT_t  is_triangle_and_in_triangle, side_of_line_i, side_of_line_neig
+    for j in range(len(neighbors)):
+        neig = neighbors[j]
+
+        # ここを変更
+        if (neig in dwnst_nodes) or (neig == -1) or (neig == i) or (neig == donor) or (neig == receiver):
+            continue
+        else:
+            x_neig = grid.x_of_node[neig]
+            y_neig = grid.y_of_node[neig]
+            is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
+            side_of_line_i = point_position_relative_to_line(x_i, y_i, x_don, y_don, x_rec, y_rec)
+            side_of_line_neig = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+            
+            # -1: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+            # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
+            # 0: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+            if is_triangle_and_in_triangle == -1:
+                if side_of_line_neig == side_flag:
+                    #temp_lat_nodes.append(neig)
+                    lat_nodes[k] = neig
+                    k += 1
+            elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
+                #temp_lat_nodes.append(neig)
+                lat_nodes[k] = neig
+                k += 1
+
+    cdef DTYPE_FLOAT_t angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+
+    if is_get_phd_cur:
+        donor = find_upstream_nodes_for2receiver(i, flowdirs, drain_area)
+        cur = grid.at_node["curvature"]
+        phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
+
+    cdef tuple result = (lat_nodes, radcurv, phd_radcurv, angle)
+
+    return result
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline void _run_one_step_for_flowdirdinf(
+                                           grid,
+                                           np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
+                                           np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                           np.ndarray[DTYPE_INT_t, ndim=1] latero_nums, 
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] z, 
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] da,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dp,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] Kv,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] max_slopes,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzver,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] cur,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] phd_cur,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] flow_angle,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] El,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] fai,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzlat,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
+                                           np.ndarray[DTYPE_FLOAT_t, ndim=2] flow_propotions,
+                                           DTYPE_FLOAT_t dx,
+                                           double fai_alpha,
+                                           double fai_beta,
+                                           double fai_gamma,
+                                           double fai_C,
+                                           double dt,
+                                           double critical_erosion_volume_ratio,
+                                           bint UC,
+                                           bint TB,
+                                           bint is_get_phd_cur=True,
+                                           ):
+
+    # _run_one_step_fivebyfive_window_only_hillはver2の派生形で、
+    # 側方侵食対象ノードに河川ノードを含めず、ヒルスロープ領域のノードだけを含める
+    # 側方侵食対象ノードの選定アルゴリズムにはnode_finder_use_fivebyfive_window_only_hillを用いる
+
+    cdef:
+         DTYPE_INT_t i, j, k, node_num_at_i, lat_node
+         DTYPE_INT_t iterNum = len(dwnst_nodes)
+         DTYPE_INT_t nodeNum = grid.shape[0]*grid.shape[1]
+         DTYPE_FLOAT_t inv_rad_curv, phd_inv_rad_curv, R, S, ero, angle
+         DTYPE_FLOAT_t petlat = 0. # potential lateral erosion initially set to 0
+    cdef np.ndarray[DTYPE_FLOAT_t, ndim=1] vol_lat_dt = np.zeros(grid.number_of_nodes)
+    cdef double epsilon = 1e-10
+    cdef int dummy = -99
+    #cdef list lat_nodes_at_i = []
+    #cdef list lat_nodes = [[dummy] for i in range(nodeNum)]
+
+    cdef DTYPE_INT_t dummy_value = -99
+    cdef np.ndarray[DTYPE_INT_t, ndim=1] lat_nodes_at_i = np.full(shape=(4), fill_value=dummy_value)
+    lat_nodes_at_i = lat_nodes_at_i.astype(dtype=np.int32)
+
+    cdef np.ndarray[DTYPE_INT_t, ndim=2] lat_nodes = np.full(shape=(nodeNum, 4), fill_value=dummy_value)
+    lat_nodes = lat_nodes.astype(dtype=np.int32)
+
+    cdef tuple more_flow = np.where(flow_propotions > 0.5)
+
+    i = 0
+
+    for j in range(iterNum):
+        i = dwnst_nodes[j]
+        # calc erosion
+        #S = np.clip(float(max_slopes[i].real), 1e-8, None)
+        S = np.clip(max_slopes[i], 1e-8, None).astype(np.float64)
+        # ero = -Kv[i] * (da[i] ** (0.5)) * S
+        ero = -Kv[i] * np.power(da[i], 0.5) * S
+        dzver[i] = ero
+        petlat = 0.0
+        
+        # Choose lateral node for node i. If node i flows downstream, continue.
+        # if node i is the first cell at the top of the drainage network, don't go
+        # into this loop because in this case, node i won't have a "donor" node
+        if i in flowdirs:
+            # node_finder picks the lateral node to erode based on angle
+            # between segments between five nodes
+            # node_finder returns the lateral node ID and the curvature and phase delay curvature
+            lat_nodes_at_i, inv_rad_curv, phd_inv_rad_curv, angle = node_finder_for_flowdirdinf(grid, 
+                                                                                        i, 
+                                                                                        flowdirs, 
+                                                                                        da, 
+                                                                                        flow_propotions,
+                                                                                        dwnst_nodes,
+                                                                                        is_get_phd_cur=is_get_phd_cur,
+                                                                                        dummy_value=dummy_value,
+                                                                                        )
+
+            #if len(lat_nodes_at_i) > 0:
+                #lat_nodes[i] = lat_nodes_at_i
+            lat_nodes[i] = lat_nodes_at_i
+            cur[i] = inv_rad_curv
+            phd_cur[i] = phd_inv_rad_curv
+            flow_angle[i] = angle # rad
+            # if the lateral node is not 0 or -1 continue. lateral node may be
+            # 0 or -1 if a boundary node was chosen as a lateral node. then
+            # radius of curavature is also 0 so there is no lateral erosion
+            R = 1/(phd_inv_rad_curv+epsilon)
+            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+            petlat = fai[i] * ero
+            El[i] = petlat
+            node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
+
+            for k in range(node_num_at_i):
+                lat_node = lat_nodes_at_i[k]
+                if lat_node > 0:
+                    # if the elevation of the lateral node is higher than primary node,
+                    # calculate a new potential lateral erosion (L/T), which is negative
+                    if z[lat_node] > z[i]:
+                        # the calculated potential lateral erosion is mutiplied by the length of the node
+                        # and the bank height, then added to an array, vol_lat_dt, for volume eroded
+                        # laterally  *per timestep* at each node. This vol_lat_dt is reset to zero for
+                        # each timestep loop. vol_lat_dt is added to itself in case more than one primary
+                        # nodes are laterally eroding this lat_node
+                        # volume of lateral erosion per timestep
+                        vol_lat_dt[lat_node] += abs(petlat) * dx * dp[i]
+                        latero_nums[lat_node] += 1 # 側方侵食を受けた回数をカウント
+                        # wd? may be H is true. how calc H ? 
+
+    dzdt[:] = dzver * dt
+    vol_lat[:] += vol_lat_dt * dt
+    # this loop determines if enough lateral erosion has happened to change
+    # the height of the neighbor node.
+    # print(f"len(lat_nodes): {len(lat_nodes)}, len(dwns_nodes): {len(dwnst_nodes)}")
+    for j in range(iterNum):
+        i = dwnst_nodes[j]
+        lat_nodes_at_i = lat_nodes[i]
+
+        #if lat_nodes_at_i[0] != dummy:
+        node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
+
+        for k in range(node_num_at_i):
+            lat_node = lat_nodes_at_i[k]
+            if lat_node > 0:  # greater than zero now bc inactive neighbors are value -1
+                if z[lat_node] > z[i]:
+                    # vol_diff is the volume that must be eroded from lat_node so that its
+                    # elevation is the same as node downstream of primary node
+                    # UC model: this would represent undercutting (the water height at
+                    # node i), slumping, and instant removal.
+                    if UC:
+                        voldiff = critical_erosion_volume_ratio * (z[i] + dp[i] - z[flowdirs[i, more_flow[1][i]]]) * dx**2 
+                    # TB model: entire lat node must be eroded before lateral erosion
+                    # occurs
+                    if TB:
+                        voldiff = critical_erosion_volume_ratio * (z[lat_node] - z[flowdirs[i, more_flow[1][i]]]) * dx**2
+                    # if the total volume eroded from lat_node is greater than the volume
+                    # needed to be removed to make node equal elevation,
+                    # then instantaneously remove this height from lat node. already has
+                    # timestep in it
+                    if vol_lat[lat_node] >= voldiff:
+                                        
+                        dzlat[lat_node] = z[flowdirs[i, more_flow[1][i]]] - z[lat_node]  # -0.001
                         # after the lateral node is eroded, reset its volume eroded to
                         # zero
                         vol_lat[lat_node] = 0.0

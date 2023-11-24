@@ -48,6 +48,32 @@ def angle_finder(grid, dn, cn, rn):
         / np.sqrt((vec_1[0] ** 2 + vec_1[1] ** 2) * (vec_2[0] ** 2 + vec_2[1] ** 2))
     )
 
+def calculate_angle(xd: float,  yd: float, 
+                    xi: float,  yi: float, 
+                    xr: float,  yr: float):
+
+    # ベクトルdiの成分を計算
+    di_x = xd - xi
+    di_y = yd - yi
+
+    # ベクトルirの成分を計算
+    ir_x = xr - xi
+    ir_y = yr - yi
+
+    # ベクトルdiとベクトルirの内積を計算
+    dot_product = di_x * ir_x + di_y * ir_y
+
+    # ベクトルdiとベクトルirのノルム(長さ)を計算
+    di_length = (di_x * di_x + di_y * di_y)**0.5
+    ir_length = (ir_x * ir_x + ir_y * ir_y)**0.5
+
+    # ベクトルdiとベクトルirの成す角のcosineを計算
+    angle_cosine = dot_product / (di_length * ir_length)
+
+    # cosineから成す角のradianを計算
+    angle_radian = np.arccos(angle_cosine)
+
+    return angle_radian
 
 def forty_five_node(donor, i, receiver, neighbors, diag_neigh):
     radcurv_angle = 0.67
@@ -453,7 +479,31 @@ def find_n_upstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray, 
 
     return doner
 
-def find_n_downstream_nodes(i: int, flowdirs: np.ndarray, n: int) -> int:
+def find_downstream_nodes(i: int, flowdirs: np.ndarray, drain_area: np.ndarray=None) -> int:
+
+    """
+    ノードiの下流側のノードのindexを返す。
+    下流側ノードが複数ある場合は、その中で最も流域面積が大きいノードのindexを返す。
+    """    
+
+    if (flowdirs.ndim == 1) or (type(drain_area) == type(None)):
+        return flowdirs[i]
+    elif flowdirs.ndim == 2:
+
+        receivers = flowdirs[i]
+        
+        if receivers[0] == receivers[1] == -1:
+            return i
+        elif (receivers[0] != -1) and (receivers[1] == -1):
+            return flowdirs[i][0]
+        else:
+            # 流域面積が大きいノードを返す
+            if drain_area[receivers[0]] >= drain_area[receivers[1]]:
+                return flowdirs[i][0]
+            else:
+                return flowdirs[i][1]
+
+def find_n_downstream_nodes(i: int, flowdirs: np.ndarray, n: int, drain_area: np.ndarray=None) -> int:
 
     """
     ノードiのn個下流側のノードのindexを返す。
@@ -469,8 +519,9 @@ def find_n_downstream_nodes(i: int, flowdirs: np.ndarray, n: int) -> int:
 
     while j <= n:
 
-        receiver = flowdirs[target_node]
-
+        # receiver = flowdirs[target_node]
+        receiver = find_downstream_nodes(target_node, flowdirs, drain_area=drain_area)
+        print(f"receiver: {receiver}, target_node: {target_node}")
         if receiver == target_node:
             break
         else:
@@ -573,6 +624,39 @@ def point_position_relative_to_line(xp: float, yp: float, xa: float, ya: float, 
         return 1  # 点Pは直線ABの右側にある
     else:
         return 0  # 点Pは直線AB上にある
+
+
+def calc_curvature(theta, dy) -> float:
+    
+    """
+    流路の曲率を計算する関数。
+
+    Parameters
+    ----------
+    theta: float
+        流路の曲率を計算する点の角度[rad]。個の角度は、ノードiとノードiのdonorを結ぶ直線diと
+        ノードiとノードiのreceiverを結ぶ直線riのなす角度である。
+
+    Returns
+    -------
+    curvature: floa]
+        流路の曲率[m^-1」
+
+    Notes
+    -----
+    y_(i-1)=y_(i+1)=0, y_i=dyの2等辺三角形を考え、角y_(i-1)-y_i-y_(i+1)の角度をthetaとする。
+    このとき、dy/dx=0, d^2y/dx^2={y_(i+1)-2*y_i+y_(i-1)}/dx^2= -2*dy/dx^2である。
+    そして、dx = dy*tan(theta/2)であるから、d^2y/dx^2=2/dy*tan^2(theta/2)である。
+    curvature = abs(d^2y/dx^2) / {1+(dy/dx)^2}^(3/2) なので、curvature = 2 / (dy*tan^2(theta/2))である。
+    """    
+    if (theta <= np.deg2rad(10)):
+        theta = np.deg2rad(10)
+    elif (theta >= np.deg2rad(170)):
+        theta = np.deg2rad(170)
+
+    curvature = 2 / (dy * (np.tan(theta/2)**2))
+
+    return curvature
 
 def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int, 
                                      flowdirs: np.ndarray, drain_area: np.ndarray,
@@ -686,18 +770,19 @@ def node_finder_use_fivebyfive_window(grid: RadialModelGrid, i: int,
     # lat_nodes = [node for node in temp_lat_nodes if node not in donors]
     lat_nodes = temp_lat_nodes
     # 曲率を計算する
-    angle = angle_finder(grid, donor, i, receiver) # rad
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
 
-    if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8) # 180-163.2=16.8度,
-    else:
-        angle = np.pi - angle
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
 
-    ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
-
-    radcurv = angle / ds
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
     
     # 位相遅れを仮定する場合
     # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
@@ -827,18 +912,19 @@ def node_finder_use_fivebyfive_window_diag(grid: RadialModelGrid, i: int,
     # lat_nodes = [node for node in temp_lat_nodes if node not in donors]
     lat_nodes = temp_lat_nodes
     # 曲率を計算する
-    angle = angle_finder(grid, donor, i, receiver) # rad
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
 
-    if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
-        angle = np.deg2rad(16.8) # 180-163.2=16.8度,
-    else:
-        angle = np.pi - angle
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
 
-    ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
-    d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
-    ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
-
-    radcurv = angle / ds
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
     
     # 位相遅れを仮定する場合
     # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
@@ -849,4 +935,192 @@ def node_finder_use_fivebyfive_window_diag(grid: RadialModelGrid, i: int,
 
     return lat_nodes, radcurv, phd_radcurv
 
+def calc_downstream_coords(grid: RadialModelGrid, i: int, flowdirs: np.ndarray, flow_propotions: np.ndarray) -> Tuple[float, float]:
 
+    """
+    ノードiの下流側のノードの座標を計算する。flow_propotionsをもとに内分点を計算する。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array. shape=(grid.number_of_nodes, 2)
+    flow_propotions : array
+        array of flow propotion of each node, shape=(grid.number_of_nodes, 2)
+    Returns
+    -------
+    _type_
+        _description_
+    """    
+
+    receivers = flowdirs[i]
+
+    if (receivers[0] != -1) and (receivers[1] == -1):
+        # ノードiが最下流ノードの場合
+        x_rec = grid.x_of_node[receivers[0]]
+        y_rec = grid.y_of_node[receivers[0]]
+
+        return x_rec, y_rec
+    elif (receivers[0] != -1) and (receivers[1] != -1):
+        receiver_0 = receivers[0]
+        receiver_1 = receivers[1]
+        x_rec_0 = grid.x_of_node[receiver_0]
+        y_rec_0 = grid.y_of_node[receiver_0]
+        x_rec_1 = grid.x_of_node[receiver_1]
+        y_rec_1 = grid.y_of_node[receiver_1]
+        x_rec = x_rec_0 * flow_propotions[i][0] + x_rec_1 * flow_propotions[i][1]
+        y_rec = y_rec_0 * flow_propotions[i][0] + y_rec_1 * flow_propotions[i][1]
+
+        return x_rec, y_rec
+
+def node_finder_for_flowdirdinf(grid: RadialModelGrid, i: int, 
+                                flowdirs: np.ndarray, drain_area: np.ndarray, 
+                                flow_propotions: np.ndarray, dwnst_nodes: np.ndarray,
+                                is_get_phd_cur: bool=False, dummy_value: np.int64=-99,
+                                ) -> Tuple[list, float, float]: 
+    
+    """
+    3x3のウィンドウ範囲の情報を使って、ノード探索を行う。ノードi、ノードiの2つ上流側のノード(upstream node: node A)と
+    2つ下流側のノード(downstream node: node B)の計3つのノードを結ぶ線分を大局的流線と定義する。
+    このように定義すると、表現できる角度が[33.7, 45, 56.4, 90, 123.7, 135, 146.4, 180]度の8種類になる。
+    このとき、側方侵食を受けるノードは以下の3つの条件を満たすノードである。
+
+    1. node iの上下左右の4つのノードに含まれる
+    2. 条件1を満たすノードのうち、三角形AiBの外側にある
+    3. 条件2を満たすノードのうち、流線ノードではないもの(ノードiに流れ込んでくるノードではないもの)
+
+    また、曲率は以下の近似式で求める。このとき、角度AiBをθとすると、曲率(1/R)は以下のようになる。
+
+    1/R = θ / (Ai + Bi)
+
+    ここで、Aiはnode iとnode Aの距離、Biはnode iとnode Bの距離である。
+
+    このとき、直線の場合はθ=180となるので曲率は0となり側方侵食は発生しないが、
+    直線流路の場合、河床租度の影響によりランダムに側方侵食が発生することを仮定し直線AiBの左右にあるノードのいずれかをランダムに選択する。
+    このとき、直線AiBの右側にあるときはθ=163.2, 左側にあるときはθ=-163.2として計算する。
+
+    Parameters
+    ----------
+    grid : ModelGrid
+        A Landlab grid object
+    i : int
+        node ID of primary node
+    flowdirs : array
+        Flow direction array
+    drain_area : array
+        drainage area array
+    flow_propotions : array
+        array of flow propotion of each node, shape=(grid.number_of_nodes, 2)
+    dwnst_nodes : array
+        downstream nodes array. this node present flownode only.
+    is_get_phd_cur : bool, optional
+        Trueの場合は位相遅れ曲率も計算する, by default False
+
+    Returns
+    -------
+    lat_nodes : list
+        node ID of lateral node
+    radcurv : float
+        curvature of channel at node i
+    phd_radcurv : float
+        phase delay curvature at node i, if is_get_phd_cur is True. default is 0.
+    """
+    
+    # 側方侵食ノードを格納するリストと曲率, 位相ずれ曲率を初期化
+    lat_nodes = []
+    radcurv = 0.
+    phd_radcurv = 0.
+
+    # 1つ上流側、2つ下流側のノードを取得する
+    n = 1
+    donor = find_n_upstream_nodes(i, flowdirs, drain_area, n)
+    receiver = find_downstream_nodes(i, flowdirs, drain_area)
+
+    print(f"i: {i}, donor: {donor}, receiver: {receiver}")
+
+    if donor == i or receiver == i:
+        # 上流側ノード、下流側ノードがない場合は側方侵食は発生しないので、空のリストと0を返す
+        return lat_nodes, radcurv, phd_radcurv
+    
+    # this gives list of active neighbors for specified node
+    # the order of this list is: [E,N,W,S]
+    neighbors = grid.active_adjacent_nodes_at_node[i]
+
+    side_flag = np.random.choice([-1, 1]) # donerとreceiverを結ぶ直線の右側か左側かをランダムに決定する
+    # temp_lat_nodes = []
+    temp_lat_nodes = np.full(shape=(4), fill_value=dummy_value, dtype=np.int64)
+    x_don = grid.x_of_node[donor]
+    y_don = grid.y_of_node[donor]
+    x_i = grid.x_of_node[i]
+    y_i = grid.y_of_node[i]
+    x_rec, y_rec = calc_downstream_coords(grid, i, flowdirs, flow_propotions) # flow_propotionsをもとに内分点を計算するs
+
+    k = 0
+    for neig in neighbors:
+        x_neig = grid.x_of_node[neig]
+        y_neig = grid.y_of_node[neig]
+        
+        # iの上下左右の4つのノードがdonor, i, receiverの三角形の内部にあるかどうかを判定する
+        # また、donor, i, receiverの三角形を構成するかどうかも判定する
+        # -1: donor, i, receiverが１直線上にある場合(三角形を構成しない)
+        # 1: donor, i, receiverが三角形を構成しており、neigが三角形の内部にある場合
+        # 0: donor, i, receiverが三角形を構成しており、neigが三角形の外部にある場合
+        is_triangle_and_in_triangle = is_inside_triangle_and_is_triangle(x_neig, y_neig, x_don, y_don, x_i, y_i, x_rec, y_rec)
+        side_of_line_i = point_position_relative_to_line(x_i, y_i, x_don, y_don, x_rec, y_rec)
+        side_of_line_neig = point_position_relative_to_line(x_neig, y_neig, x_don, y_don, x_rec, y_rec)
+
+        if (neig in dwnst_nodes) or (neig == -1):
+            continue
+        else:
+            if is_triangle_and_in_triangle == -1:
+                # donor, i, receiverが１直線上にある場合は、直線の右側か左側かを判定する 
+                if side_of_line_neig == side_flag:
+                    # 直線の右側にある場合は側方侵食ノードとする
+                    # temp_lat_nodes.append(neig)
+                    temp_lat_nodes[k] = neig
+                    k += 1
+            elif (is_triangle_and_in_triangle == 0) and (side_of_line_i == side_of_line_neig):
+                # donor, i, receiverが三角形を構成しており、neigが三角形の内部にあるかつ、
+                # 直線donor-receiverに対してノードiとノードneigが同じ側にある場合は側方侵食ノードとする
+                # temp_lat_nodes.append(neig)
+                temp_lat_nodes[k] = neig
+                k += 1
+
+        # sent = f""" i: {i}, p: {neig}, donor: {donor}, receiver: {receiver}, is_triangle_and_in_triangle: {is_triangle_and_in_triangle}, 
+        # side_of_line: {side_of_line}, side_flag: {side_flag}, temp_lat_nodes: {temp_lat_nodes}"""
+        # print(sent)
+                
+    
+    # ノードiに流れ込んでくるノードは側方侵食ノードに含めない
+    # donors = np.where(flowdirs == i)[0]
+    # lat_nodes = [node for node in temp_lat_nodes if node not in donors]
+    lat_nodes = temp_lat_nodes
+
+    # 曲率を計算する
+    angle = calculate_angle(x_don, y_don, x_i, y_i, x_rec, y_rec)
+    # if np.isclose(angle, 0.) or np.isclose(angle, np.pi):
+    #     # angle = np.deg2rad(16.8) # 180-163.2=16.8度,
+    #     angle = np.deg2rad(163.2) # 163.2度
+    # # else:
+    #     # angle = np.pi - angle
+        
+
+    # ds = np.hypot(x_don - x_i, y_don - y_i) + np.hypot(x_i - x_rec, y_i - y_rec)
+    # d_donor_receiver = np.hypot(x_don - x_rec, y_don - y_rec)
+    # ds = (ds + d_donor_receiver) * 0.5 # 平均を使用 
+    print(f"angle: {angle}")
+    radcurv = calc_curvature(theta=angle, dy=grid.dx*0.5) # 1/R -> Rは曲率半径
+    
+    # 位相遅れを仮定する場合
+    # 上流側の曲率は既に計算してある前提で位相遅れ曲率を取得する。
+    if is_get_phd_cur:
+        donor = find_upstream_nodes(i, flowdirs, drain_area)
+        cur = grid.at_node["curvature"]
+        phd_radcurv = cur[donor]
+    else:
+        phd_radcurv = radcurv
+
+    return lat_nodes, radcurv, phd_radcurv, angle
