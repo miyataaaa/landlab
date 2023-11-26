@@ -1035,9 +1035,9 @@ def node_finder_for_flowdirdinf(grid: RadialModelGrid, i: int,
     phd_radcurv = 0.
 
     # 1つ上流側、2つ下流側のノードを取得する
-    n = 1
+    n = 2
     donor = find_n_upstream_nodes(i, flowdirs, drain_area, n)
-    receiver = find_downstream_nodes(i, flowdirs, drain_area)
+    receiver = find_n_downstream_nodes(i, flowdirs, drain_area, n)
 
     print(f"i: {i}, donor: {donor}, receiver: {receiver}")
 

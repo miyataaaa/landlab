@@ -207,6 +207,48 @@ cpdef inline DTYPE_INT_t find_downstream_nodes_for2receiver(DTYPE_INT_t i,
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+cpdef inline DTYPE_INT_t find_n_upstream_nodes_for2receiver(DTYPE_INT_t i, 
+                                                            np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
+                                                            DTYPE_INT_t  n) except -1:
+    cdef DTYPE_INT_t  j = 1
+    cdef DTYPE_INT_t target_node = i
+    cdef DTYPE_INT_t doner
+
+    while j <= n:
+        doner = find_upstream_nodes_for2receiver(target_node, flowdirs, drain_area)
+
+        if doner == target_node:
+            break
+        else:
+            target_node = doner
+        j += 1
+
+    return doner
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef inline DTYPE_INT_t find_n_downstream_nodes_for2receiver(DTYPE_INT_t i, 
+                                                              np.ndarray[DTYPE_INT_t, ndim=2] flowdirs, 
+                                                              np.ndarray[DTYPE_FLOAT_t, ndim=1] drain_area, 
+                                                              DTYPE_INT_t  n) except -1:
+    cdef DTYPE_INT_t  j = 1
+    cdef DTYPE_INT_t target_node = i
+    cdef DTYPE_INT_t receiver
+
+    while j <= n:
+        receiver = find_downstream_nodes_for2receiver(target_node, flowdirs, drain_area) 
+
+        if receiver == target_node:
+            break
+        else:
+            target_node = receiver
+        j += 1
+
+    return receiver
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef inline DTYPE_FLOAT_t calc_curvature(DTYPE_FLOAT_t theta,
                                           DTYPE_FLOAT_t dy) except -1:
                                         
@@ -633,6 +675,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
                                            double critical_erosion_volume_ratio,
                                            bint UC,
                                            bint TB,
+                                           bint is_get_phd_cur,
                                            ):
 
     cdef:
@@ -675,7 +718,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
                                                                                                     i, 
                                                                                                     flowdirs, 
                                                                                                     da, 
-                                                                                                    is_get_phd_cur=True,
+                                                                                                    is_get_phd_cur=is_get_phd_cur,
                                                                                                     dummy_value=dummy_value)
 
             #if len(lat_nodes_at_i) > 0:
@@ -686,7 +729,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
-            R = 1/(phd_inv_rad_curv+epsilon)
+            R = 1/(phd_inv_rad_curv+epsilon) if phd_inv_rad_curv else 1/(inv_rad_curv+epsilon)
             fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
             petlat = fai[i] * ero
             El[i] = petlat
@@ -1004,6 +1047,7 @@ cpdef inline tuple node_finder_use_fivebyfive_window_only_hill(grid,
                                                                np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
                                                                bint is_get_phd_cur=False,
                                                                DTYPE_INT_t dummy_value=-99,
+                                                               DTYPE_INT_t skip_node_interval=2,
                                                                ):
 
     # node_finder_use_fivebyfive_window_only_hillはver2の派生形で、
@@ -1017,9 +1061,9 @@ cpdef inline tuple node_finder_use_fivebyfive_window_only_hill(grid,
     cdef DTYPE_FLOAT_t radcurv = 0.0
     cdef DTYPE_FLOAT_t phd_radcurv = 0.0
     
-    cdef DTYPE_INT_t  n = 2
-    cdef DTYPE_INT_t  donor = find_n_upstream_nodes(i, flowdirs, drain_area, n)
-    cdef DTYPE_INT_t  receiver = find_n_downstream_nodes(i, flowdirs, n)
+    #cdef DTYPE_INT_t  n = 2
+    cdef DTYPE_INT_t  donor = find_n_upstream_nodes(i, flowdirs, drain_area, skip_node_interval)
+    cdef DTYPE_INT_t  receiver = find_n_downstream_nodes(i, flowdirs, skip_node_interval)
 
     #cdef np.ndarray[DTYPE_INT_t, ndim=1] donors = np.where(flowdirs == i)[0].astype(np.int32)
     
@@ -1134,6 +1178,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            bint UC,
                                            bint TB,
                                            bint is_get_phd_cur=True,
+                                           DTYPE_INT_t skip_node_interval=2,
                                            ):
 
     # _run_one_step_fivebyfive_window_only_hillはver2の派生形で、
@@ -1183,6 +1228,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                                                                                         dwnst_nodes,
                                                                                                         is_get_phd_cur=is_get_phd_cur,
                                                                                                         dummy_value=dummy_value,
+                                                                                                        skip_node_interval=skip_node_interval,
                                                                                                         )
 
             #if len(lat_nodes_at_i) > 0:
@@ -1194,7 +1240,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
-            R = 1/(phd_inv_rad_curv+epsilon)
+            R = 1/(phd_inv_rad_curv+epsilon) if is_get_phd_cur else 1/(inv_rad_curv+epsilon)
             fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
             petlat = fai[i] * ero
             El[i] = petlat
@@ -1317,6 +1363,7 @@ cpdef inline tuple node_finder_for_flowdirdinf(grid,
                                                 np.ndarray[DTYPE_INT_t, ndim=1] dwnst_nodes,
                                                 bint is_get_phd_cur=False,
                                                 DTYPE_INT_t dummy_value=-99,
+                                                DTYPE_INT_t skip_node_interval=2,
                                                 ):
 
     # node_finder_use_fivebyfive_window_only_hillはver2の派生形で、
@@ -1330,9 +1377,9 @@ cpdef inline tuple node_finder_for_flowdirdinf(grid,
     cdef DTYPE_FLOAT_t radcurv = 0.0
     cdef DTYPE_FLOAT_t phd_radcurv = 0.0
     
-    cdef DTYPE_INT_t  n = 1
-    cdef DTYPE_INT_t  donor = find_upstream_nodes_for2receiver(i, flowdirs, drain_area)
-    cdef DTYPE_INT_t  receiver = find_downstream_nodes_for2receiver(i, flowdirs, drain_area,)
+    #cdef DTYPE_INT_t  n = 2
+    cdef DTYPE_INT_t  donor = find_n_upstream_nodes_for2receiver(i, flowdirs, drain_area, skip_node_interval)
+    cdef DTYPE_INT_t  receiver = find_n_downstream_nodes_for2receiver(i, flowdirs, drain_area, skip_node_interval)
 
     if donor == i or receiver == i:
         return lat_nodes, radcurv, phd_radcurv
@@ -1442,6 +1489,7 @@ cpdef inline void _run_one_step_for_flowdirdinf(
                                            bint UC,
                                            bint TB,
                                            bint is_get_phd_cur=True,
+                                           DTYPE_INT_t skip_node_interval=2,
                                            ):
 
     # _run_one_step_fivebyfive_window_only_hillはver2の派生形で、
@@ -1507,7 +1555,7 @@ cpdef inline void _run_one_step_for_flowdirdinf(
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
-            R = 1/(phd_inv_rad_curv+epsilon)
+            R = 1/(phd_inv_rad_curv+epsilon) if is_get_phd_cur else 1/(inv_rad_curv+epsilon)
             fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
             petlat = fai[i] * ero
             El[i] = petlat

@@ -595,7 +595,7 @@ class LataralSimilateManager(HDFhandler):
 
         return mg
     
-    def create_fa(self, mg: RasterModelGrid) -> FlowAccumulator:
+    def create_fa(self, mg: RasterModelGrid, flowdir_key: str=None) -> FlowAccumulator:
 
         """
         設定した流量条件でのFlowAccumulatorクラスをインスタンス化する
@@ -604,6 +604,8 @@ class LataralSimilateManager(HDFhandler):
         ----------
         mg : RasterModelGrid
             標高情報等を格納したグリッドオブジェクト
+        flowdir_key : str, optional
+            流量条件のキー, by default None
 
         Returns
         -------
@@ -611,7 +613,14 @@ class LataralSimilateManager(HDFhandler):
             _description_
         """        
 
-        # 流量条件の設定
+        # 流量条件の設定INF
+        if flowdir_key == "FlowDirectorD8":
+            self.FlowAcc_dict['flow_director'] = flowdir_key
+            mg.at_node['flow__receiver_node'] = mg.add_zeros("flow__receiver_node", at="node", dtype=int)
+            mg.at_node['flow__upstream_node_order'] = mg.add_zeros("flow__upstream_node_order", at="node", dtype=int)
+            mg.at_node["topographic__steepest_slope"] = np.zeros(mg.number_of_nodes)
+            mg.at_node["flow__link_to_receiver_node"] = np.zeros(mg.number_of_nodes, dtype=int)
+
         fa = FlowAccumulator(grid=mg, **self.FlowAcc_dict)
 
         return fa

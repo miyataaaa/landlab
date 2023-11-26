@@ -292,6 +292,8 @@ class LateralEroder(Component):
         fai_C = -64,
         add_min_Q_or_da = 0.0,
         critical_erosion_volume_ratio = 1.0,
+        is_use_phd_cur = False,
+        skip_node_interval = 2,
     ):
         """
         Parameters
@@ -567,6 +569,12 @@ class LateralEroder(Component):
 
         # add critical_erosion_volume_ratio
         self._critical_erosion_volume_ratio = critical_erosion_volume_ratio
+
+        # add is_use_phd_cur
+        self._is_use_phd_cur = is_use_phd_cur
+
+        # add skip_node_interval
+        self._skip_node_interval = int(skip_node_interval)
 
     def get_mean_slope(self, slope: np.ndarray, proportions: np.ndarray) -> np.ndarray:
 
@@ -910,13 +918,14 @@ class LateralEroder(Component):
                                                                                                         i, 
                                                                                                         flowdirs, 
                                                                                                         da, 
-                                                                                                        is_get_phd_cur=True,
+                                                                                                        is_get_phd_cur=self._is_use_phd_cur,
                                                                                                         dummy_value=dummy_value)
 
+                inv_R = phd_inv_rad_curv if self._is_use_phd_cur else inv_rad_curv
                 lat_nodes[i] = lat_nodes_at_i
                 cur[i] = inv_rad_curv
                 phd_cur[i] = phd_inv_rad_curv
-                petlat = -Kl[i] * da[i] * max_slopes[i] * inv_rad_curv # 側方侵食速度
+                petlat = -Kl[i] * da[i] * max_slopes[i] * inv_R # 側方侵食速度
                 El[i] = petlat
                 fai[i] = petlat/ero #側方/下方侵食速度比率
                 node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
@@ -1114,14 +1123,16 @@ class LateralEroder(Component):
                                                                                                             flowdirs, 
                                                                                                             da, 
                                                                                                             dwnst_nodes,
-                                                                                                            is_get_phd_cur=True,
+                                                                                                            is_get_phd_cur=self._is_use_phd_cur,
                                                                                                             dummy_value=dummy_value,
+                                                                                                            skip_node_interval=self._skip_node_interval,
                                                                                                              )
 
+                inv_R = phd_inv_rad_curv if self._is_use_phd_cur else inv_rad_curv
                 lat_nodes[i] = lat_nodes_at_i
                 cur[i] = inv_rad_curv
                 phd_cur[i] = phd_inv_rad_curv
-                petlat = -Kl[i] * da[i] * max_slopes[i] * inv_rad_curv # 側方侵食速度
+                petlat = -Kl[i] * da[i] * max_slopes[i] * inv_R # 側方侵食速度
                 El[i] = petlat
                 fai[i] = petlat/ero #側方/下方侵食速度比率
                 node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
@@ -1327,8 +1338,9 @@ class LateralEroder(Component):
                                                                                             da, 
                                                                                             flow_prop,
                                                                                             dwnst_nodes,
-                                                                                            is_get_phd_cur=True,
+                                                                                            is_get_phd_cur=self._is_use_phd_cur,
                                                                                             dummy_value=dummy_value,
+                                                                                            skip_node_interval=self._skip_node_interval,
                                                                                                 )
 
                 lat_nodes[i] = lat_nodes_at_i
@@ -1733,6 +1745,7 @@ class LateralEroder(Component):
             critical_erosion_volume_ratio,
             UC,
             TB,
+            self._is_use_phd_cur
         )
 
         return grid, self._dzlat   
@@ -1877,7 +1890,8 @@ class LateralEroder(Component):
             critical_erosion_volume_ratio,
             UC,
             TB,
-            True, # is_use_phd_cur
+            self._is_use_phd_cur, # is_use_phd_cur
+            self._skip_node_interval, # skip_node_interval
         )
 
         return grid, self._dzlat  
@@ -2026,7 +2040,8 @@ class LateralEroder(Component):
             critical_erosion_volume_ratio,
             UC,
             TB,
-            False, # is_use_phd_cur
+            self._is_use_phd_cur, # is_use_phd_cur
+            self._skip_node_interval, # skip_node_interval
         )
 
         return grid, self._dzlat  
