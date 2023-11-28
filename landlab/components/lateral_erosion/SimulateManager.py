@@ -616,8 +616,8 @@ class LataralSimilateManager(HDFhandler):
         # 流量条件の設定INF
         if flowdir_key == "FlowDirectorD8":
             self.FlowAcc_dict['flow_director'] = flowdir_key
-            mg.at_node['flow__receiver_node'] = mg.add_zeros("flow__receiver_node", at="node", dtype=int)
-            mg.at_node['flow__upstream_node_order'] = mg.add_zeros("flow__upstream_node_order", at="node", dtype=int)
+            mg.at_node['flow__receiver_node'] = mg.add_zeros("flow__receiver_node", at="node", dtype=int, clobber=True)
+            mg.at_node['flow__upstream_node_order'] = mg.add_zeros("flow__upstream_node_order", at="node", dtype=int, clobber=True)
             mg.at_node["topographic__steepest_slope"] = np.zeros(mg.number_of_nodes)
             mg.at_node["flow__link_to_receiver_node"] = np.zeros(mg.number_of_nodes, dtype=int)
 
