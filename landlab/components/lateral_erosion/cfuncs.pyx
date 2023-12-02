@@ -920,6 +920,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            bint TB,
                                            bint is_get_phd_cur=True,
                                            DTYPE_INT_t skip_node_interval=2,
+                                           DTYPE_FLOAT_t cur_correction_factor=1.0,
                                            ):
 
     # _run_one_step_fivebyfive_window_only_hillはver2の派生形で、
@@ -975,8 +976,8 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
             #if len(lat_nodes_at_i) > 0:
                 #lat_nodes[i] = lat_nodes_at_i
             lat_nodes[i] = lat_nodes_at_i
-            cur[i] = inv_rad_curv
-            phd_cur[i] = phd_inv_rad_curv
+            cur[i] = inv_rad_curv * cur_correction_factor
+            phd_cur[i] = phd_inv_rad_curv * cur_correction_factor
             flow_angle[i] = angle # rad
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then
@@ -1170,6 +1171,7 @@ cpdef inline void _run_one_step_fivebyfive_window_diag_only_hill(
                                            bint TB,
                                            bint is_get_phd_cur=True,
                                            DTYPE_INT_t skip_node_interval=2,
+                                           DTYPE_FLOAT_t cur_correction_factor=1.0,
                                            ):
 
     # Ver3では、側方侵食セルの選定対象に対角線上のセルも含めている
@@ -1222,8 +1224,8 @@ cpdef inline void _run_one_step_fivebyfive_window_diag_only_hill(
             #if len(lat_nodes_at_i) > 0:
                 #lat_nodes[i] = lat_nodes_at_i
             lat_nodes[i] = lat_nodes_at_i
-            cur[i] = inv_rad_curv
-            phd_cur[i] = phd_inv_rad_curv
+            cur[i] = inv_rad_curv * cur_correction_factor
+            phd_cur[i] = phd_inv_rad_curv * cur_correction_factor
             flow_angle[i] = angle # rad
             # if the lateral node is not 0 or -1 continue. lateral node may be
             # 0 or -1 if a boundary node was chosen as a lateral node. then

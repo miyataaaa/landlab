@@ -296,6 +296,7 @@ class LateralEroder(Component):
         critical_erosion_volume_ratio = 1.0,
         is_use_phd_cur = False,
         skip_node_interval = 2,
+        cur_correction_factor = 1.0,
     ):
         """
         Parameters
@@ -582,6 +583,9 @@ class LateralEroder(Component):
 
         # add skip_node_interval
         self._skip_node_interval = int(skip_node_interval)
+
+        # add cur_correction_factor
+        self._cur_correction_factor = float(cur_correction_factor)
 
     def get_mean_slope(self, slope: np.ndarray, proportions: np.ndarray) -> np.ndarray:
 
@@ -1063,6 +1067,9 @@ class LateralEroder(Component):
         # critical_erosion_volume_ratio 
         critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
 
+        # cur_correction_factor
+        cur_correction_factor = self._cur_correction_factor
+
         if inlet_on is True:
             inlet_node = self._inlet_node
             qsinlet = self._qsinlet
@@ -1138,8 +1145,8 @@ class LateralEroder(Component):
 
                 inv_R = phd_inv_rad_curv if self._is_use_phd_cur else inv_rad_curv
                 lat_nodes[i] = lat_nodes_at_i
-                cur[i] = inv_rad_curv
-                phd_cur[i] = phd_inv_rad_curv
+                cur[i] = inv_rad_curv * cur_correction_factor
+                phd_cur[i] = phd_inv_rad_curv * cur_correction_factor
                 petlat = -Kl[i] * da[i] * max_slopes[i] * inv_R # 側方侵食速度
                 El[i] = petlat
                 fai[i] = petlat/ero #側方/下方侵食速度比率
@@ -1273,6 +1280,9 @@ class LateralEroder(Component):
         # critical_erosion_volume_ratio 
         critical_erosion_volume_ratio = self._critical_erosion_volume_ratio
 
+        # cur_correction_factor
+        cur_correction_factor = self._cur_correction_factor
+
         if inlet_on is True:
             inlet_node = self._inlet_node
             qsinlet = self._qsinlet
@@ -1348,8 +1358,8 @@ class LateralEroder(Component):
 
                 inv_R = phd_inv_rad_curv if self._is_use_phd_cur else inv_rad_curv
                 lat_nodes[i] = lat_nodes_at_i
-                cur[i] = inv_rad_curv
-                phd_cur[i] = phd_inv_rad_curv
+                cur[i] = inv_rad_curv * cur_correction_factor
+                phd_cur[i] = phd_inv_rad_curv * cur_correction_factor
                 petlat = -Kl[i] * da[i] * max_slopes[i] * inv_R # 側方侵食速度
                 El[i] = petlat
                 fai[i] = petlat/ero #側方/下方侵食速度比率
@@ -2111,6 +2121,7 @@ class LateralEroder(Component):
             TB,
             self._is_use_phd_cur, # is_use_phd_cur
             self._skip_node_interval, # skip_node_interval
+            self._cur_correction_factor # cur_correction_factor
         )
 
         return grid, self._dzlat  
@@ -2256,6 +2267,7 @@ class LateralEroder(Component):
             TB,
             self._is_use_phd_cur, # is_use_phd_cur
             self._skip_node_interval, # skip_node_interval
+            self._cur_correction_factor # cur_correction_factor
         )
 
         return grid, self._dzlat  
