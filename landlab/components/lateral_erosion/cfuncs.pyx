@@ -667,9 +667,11 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzlat,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
                                            DTYPE_FLOAT_t dx,
+                                           DTYPE_FLOAT_t Kl_ratio,
                                            double fai_alpha,
                                            double fai_beta,
                                            double fai_gamma,
+                                           double fai_delta,
                                            double fai_C,
                                            double dt,
                                            double critical_erosion_volume_ratio,
@@ -730,7 +732,7 @@ cpdef inline void _run_one_step_fivebyfive_window_ver2(
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
             R = 1/(phd_inv_rad_curv+epsilon) if phd_inv_rad_curv else 1/(inv_rad_curv+epsilon)
-            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
             petlat = fai[i] * ero
             El[i] = petlat
             node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
@@ -910,9 +912,11 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzlat,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
                                            DTYPE_FLOAT_t dx,
+                                           DTYPE_FLOAT_t Kl_ratio,
                                            double fai_alpha,
                                            double fai_beta,
                                            double fai_gamma,
+                                           double fai_delta,
                                            double fai_C,
                                            double dt,
                                            double critical_erosion_volume_ratio,
@@ -983,7 +987,7 @@ cpdef inline void _run_one_step_fivebyfive_window_only_hill(
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
             R = 1/(phd_inv_rad_curv+epsilon) if is_get_phd_cur else 1/(inv_rad_curv+epsilon)
-            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
             petlat = fai[i] * ero
             El[i] = petlat
             node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
@@ -1161,9 +1165,11 @@ cpdef inline void _run_one_step_fivebyfive_window_diag_only_hill(
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzlat,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
                                            DTYPE_FLOAT_t dx,
+                                           DTYPE_FLOAT_t Kl_ratio,
                                            double fai_alpha,
                                            double fai_beta,
                                            double fai_gamma,
+                                           double fai_delta,
                                            double fai_C,
                                            double dt,
                                            double critical_erosion_volume_ratio,
@@ -1231,7 +1237,7 @@ cpdef inline void _run_one_step_fivebyfive_window_diag_only_hill(
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
             R = 1/(phd_inv_rad_curv+epsilon) if is_get_phd_cur else 1/(inv_rad_curv+epsilon)
-            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
             petlat = fai[i] * ero
             El[i] = petlat
             node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
@@ -1470,9 +1476,11 @@ cpdef inline void _run_one_step_for_flowdirdinf(
                                            np.ndarray[DTYPE_FLOAT_t, ndim=1] dzdt,
                                            np.ndarray[DTYPE_FLOAT_t, ndim=2] flow_propotions,
                                            DTYPE_FLOAT_t dx,
+                                           DTYPE_FLOAT_t Kl_ratio,
                                            double fai_alpha,
                                            double fai_beta,
                                            double fai_gamma,
+                                           double fai_delta,
                                            double fai_C,
                                            double dt,
                                            double critical_erosion_volume_ratio,
@@ -1546,7 +1554,7 @@ cpdef inline void _run_one_step_for_flowdirdinf(
             # 0 or -1 if a boundary node was chosen as a lateral node. then
             # radius of curavature is also 0 so there is no lateral erosion
             R = 1/(phd_inv_rad_curv+epsilon) if is_get_phd_cur else 1/(inv_rad_curv+epsilon)
-            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+            fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
             petlat = fai[i] * ero
             El[i] = petlat
             node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])

@@ -288,9 +288,10 @@ class LateralEroder(Component):
         F = 0.02,
         thresh_da = 0,
         phase_delay_node_num = 0,
-        fai_alpha = 3.3,
-        fai_beta = -0.25,
-        fai_gamma = -0.85,
+        fai_alpha = 4.29,
+        fai_beta = -0.23,
+        fai_gamma = -0.88,
+        fai_delta = 1.0,
         fai_C = -64,
         add_min_Q_or_da = 0.0,
         critical_erosion_volume_ratio = 1.0,
@@ -318,6 +319,12 @@ class LateralEroder(Component):
                     Simple but will become unstable if time step is too large or
                     if bedrock erodibility is vry high.
                 (2) 'ULE': Lateral erosion calculations using regression equations obtained from ULEmodel.
+                    This solover caluculates lateral/versonal erosion rate 'fai' by using the following equation.
+
+                        fai = exp(fai_C) * (Q**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
+
+                    where Q is discharge, S is slope, R is drainage area, and Kl_ratio is ratio of lateral to vertical bedrock erodibility.
+
         node_finder: string
             node_finder options:
                 (1) 'langston' (default): 
@@ -325,7 +332,16 @@ class LateralEroder(Component):
                 (2) 'ffwindow': 
                     Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window.
                 (3) 'ffwindow_only_hill':
-                    Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window and choose only hillslope nodes.
+                    Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window 
+                    and choose only hillslope nodes.
+                (4) 'ffwindow_diag_only_hill':
+                    Determine the lateral erosion cell after defining the virtual flow path with a 5×5 local window 
+                    and choose only hillslope nodes and diagonal nodes. when select lateral erosion cell, this algorithm
+                    consideres diagonal nodes as hillslope nodes.
+                (5) 'flowdirdinf':
+                    Determine the lateral erosion cell after defining the virtual flow by using flow direction with Dinf.
+                    If you use Dinf flow direction, you should use this option.
+        
         use_Q : bool, optional (defaults to False)
             If True, use the discharge to calculate erosion rate. If False, use the drainage area.
         inlet_node : integer, optional
@@ -350,15 +366,18 @@ class LateralEroder(Component):
             Threshold of drainage area, m^2 if use_Q is False, m^3/s if use_Q is True
         phase_delay_node_num : int, optional (defaults to 0)
             Number of nodes to consider for phase delay curvature. this parameter is used only when solver is "delay_rs".
-        fai_alpha : float, optional (defaults to 3.3)
+        fai_alpha : float, optional (defaults to 4.29)
             Parameter for calculating lateral/versonal erosion rate, dimensionless. 
-            this parameter is used only when solver is "delay_rs". 
-        fai_beta : float, optional (defaults to -0.25)
+            this parameter is used only when solver is "ULE". 
+        fai_beta : float, optional (defaults to -0.23)
             Parameter for calculating lateral/versonal erosion rate, dimensionless. 
-            this parameter is used only when solver is "delay_rs".
-        fai_gamma : float, optional (defaults to -0.85)
+            this parameter is used only when solver is "ULE".
+        fai_gamma : float, optional (defaults to -0.88)
             Parameter for calculating lateral/versonal erosion rate, dimensionless. 
-            this parameter is used only when solver is "delay_rs".
+            this parameter is used only when solver is "ULE".
+        fai_delta : float, optional (defaults to 1.0)
+            Parameter for calculating lateral/versonal erosion rate, dimensionless.
+            this parameter is used only when solver is "ULE".
         fai_C : float, optional (defaults to -64)
             Parameter for calculating lateral/versonal erosion rate, dimensionless. 
             this parameter is used only when solver is "delay_rs".
@@ -369,6 +388,22 @@ class LateralEroder(Component):
             lateral erosion occurs. if critical_erosion_volume_ratio is 1.0, lateral erosion occurs when the volume of 
             lateral erosion is larger than the volume of lateral node. it is equivalent to the original algorithm (UC&TB).
             if critical_erosion_volume_ratio is less than 1.0, lateral erosion ocuur earlier than the original algorithm.
+        is_use_phd_cur : bool, optional (defaults to False)
+            If True, use phase delay curvature. if False, not use phase delay curvature.
+        skip_node_interval : int, optional (defaults to 2)
+            Skip node interval for calculating curvature. 
+            this parameter is used in node_finders ['ffwindow_only_hill', 'ffwindow_diag_only_hill'].
+
+            if this value is 1, curvature is calculated considering 3×3 window.
+            if this value is 2, curvature is calculated considering 5×5 window.
+            if this value is 3, curvature is calculated considering 7×7 window.
+            if this value is 4, curvature is calculated considering 9×9 window.
+            
+            Increasing this parameter tends to reflect greater channel structure when calculating curvature
+
+        cur_correction_factor : float, optional (defaults to 1.0)
+            Correction factor for curvature. 
+            this parameter is used in node_finders ['ffwindow_only_hill', 'ffwindow_diag_only_hill'].
         """
         super().__init__(grid)
 
@@ -520,6 +555,7 @@ class LateralEroder(Component):
 
         self._alph = alph
         self._Kv = Kv  # can be overwritten with spatially variable
+        self._Kl_ratio = Kl_ratio  # can be overwritten with spatially variable
         self._Klr = float(Kl_ratio)  # default ratio of Kv/Kl is 1. Can be overwritten
 
         self._dzdt = grid.add_zeros(
@@ -570,6 +606,7 @@ class LateralEroder(Component):
         self._fai_alpha = fai_alpha
         self._fai_beta = fai_beta
         self._fai_gamma = fai_gamma
+        self._fai_delta = fai_delta
         self._fai_C = fai_C
 
         # add min_Q_or_da
@@ -1661,6 +1698,7 @@ class LateralEroder(Component):
             Langston & Tucker (2018)
         """
         Klr = self._Klr
+        Kl_ratio = self._Kl_ratio
         grid = self._grid
         UC = self._UC
         TB = self._TB
@@ -1681,10 +1719,12 @@ class LateralEroder(Component):
 
         cur = grid.at_node["curvature"]
 
-        fai_alpha = self._fai_alpha
-        fai_beta = self._fai_beta
-        fai_gamma = self._fai_gamma
-        fai_C = self._fai_C
+        fai_alpha = float(self._fai_alpha)
+        fai_beta = float(self._fai_beta)
+        fai_gamma = float(self._fai_gamma)
+        fai_delta = float(self._fai_delta)
+        fai_C = float(self._fai_C)
+
 
         # May 2, runoff calculated below (in m/s) is important for calculating
         # 2022/07/07 unit of runoff is not m/s, maybe m/yr
@@ -1786,7 +1826,7 @@ class LateralEroder(Component):
                     if z[lat_node] > z[i]:
                         R = 1/(inv_rad_curv+epsilon)
                         S = np.clip(max_slopes[i], 1e-8, None)
-                        fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma)
+                        fai[i] = np.exp(fai_C) * (da[i]**fai_alpha) * (S**fai_beta) * (R**fai_gamma) * (Kl_ratio**fai_delta)
                         petlat = fai[i] * ero
                         El[i] = petlat
                         # the calculated potential lateral erosion is mutiplied by the length of the node
@@ -1859,6 +1899,7 @@ class LateralEroder(Component):
         アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
         """
         Klr = self._Klr
+        Kl_ratio = self._Kl_ratio
         grid = self._grid
         UC = self._UC
         TB = self._TB
@@ -1881,10 +1922,12 @@ class LateralEroder(Component):
         cur = grid.at_node["curvature"]
         phd_cur = grid.at_node["phd_curvature"]
 
-        fai_alpha = self._fai_alpha
-        fai_beta = self._fai_beta
-        fai_gamma = self._fai_gamma
-        fai_C = self._fai_C
+        fai_alpha = float(self._fai_alpha)
+        fai_beta = float(self._fai_beta)
+        fai_gamma = float(self._fai_gamma)
+        fai_delta = float(self._fai_delta)
+        fai_C = float(self._fai_C)
+
 
         z = grid.at_node["topographic__elevation"]
         # clear qsin for next loop
@@ -1966,9 +2009,11 @@ class LateralEroder(Component):
             self._dzlat,
             dzdt,
             grid.dx,
+            Kl_ratio,
             fai_alpha,
             fai_beta,
             fai_gamma,
+            fai_delta,
             fai_C,
             dt,
             critical_erosion_volume_ratio,
@@ -1999,6 +2044,7 @@ class LateralEroder(Component):
         アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
         """
         Klr = self._Klr
+        Kl_ratio = self._Kl_ratio
         grid = self._grid
         UC = self._UC
         TB = self._TB
@@ -2025,10 +2071,12 @@ class LateralEroder(Component):
         phd_cur[:] = 0.0
         flow_angle[:] = 0.0
 
-        fai_alpha = self._fai_alpha
-        fai_beta = self._fai_beta
-        fai_gamma = self._fai_gamma
-        fai_C = self._fai_C
+        fai_alpha = float(self._fai_alpha)
+        fai_beta = float(self._fai_beta)
+        fai_gamma = float(self._fai_gamma)
+        fai_delta = float(self._fai_delta)
+        fai_C = float(self._fai_C)
+
 
         z = grid.at_node["topographic__elevation"]
         # clear qsin for next loop
@@ -2111,9 +2159,11 @@ class LateralEroder(Component):
             self._dzlat,
             dzdt,
             grid.dx,
+            Kl_ratio,
             fai_alpha,
             fai_beta,
             fai_gamma,
+            fai_delta,
             fai_C,
             dt,
             critical_erosion_volume_ratio,
@@ -2145,6 +2195,7 @@ class LateralEroder(Component):
         アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
         """
         Klr = self._Klr
+        Kl_ratio = float(self._Kl_ratio)
         grid = self._grid
         UC = self._UC
         TB = self._TB
@@ -2171,10 +2222,11 @@ class LateralEroder(Component):
         phd_cur[:] = 0.0
         flow_angle[:] = 0.0
 
-        fai_alpha = self._fai_alpha
-        fai_beta = self._fai_beta
-        fai_gamma = self._fai_gamma
-        fai_C = self._fai_C
+        fai_alpha = float(self._fai_alpha)
+        fai_beta = float(self._fai_beta)
+        fai_gamma = float(self._fai_gamma)
+        fai_delta = float(self._fai_delta)
+        fai_C = float(self._fai_C)
 
         z = grid.at_node["topographic__elevation"]
         # clear qsin for next loop
@@ -2257,9 +2309,11 @@ class LateralEroder(Component):
             self._dzlat,
             dzdt,
             grid.dx,
+            Kl_ratio,
             fai_alpha,
             fai_beta,
             fai_gamma,
+            fai_delta,
             fai_C,
             dt,
             critical_erosion_volume_ratio,
@@ -2291,6 +2345,7 @@ class LateralEroder(Component):
         アルゴリズムの本質はrun_one_step_fivebyfive_window_Cと同じだが高速
         """
         Klr = self._Klr
+        Kl_ratio = float(self._Kl_ratio)
         grid = self._grid
         UC = self._UC
         TB = self._TB
@@ -2317,10 +2372,12 @@ class LateralEroder(Component):
         phd_cur[:] = 0.0
         flow_angle[:] = 0.0
 
-        fai_alpha = self._fai_alpha
-        fai_beta = self._fai_beta
-        fai_gamma = self._fai_gamma
-        fai_C = self._fai_C
+        fai_alpha = float(self._fai_alpha)
+        fai_beta = float(self._fai_beta)
+        fai_gamma = float(self._fai_gamma)
+        fai_delta = float(self._fai_delta)
+        fai_C = float(self._fai_C)
+
 
         z = grid.at_node["topographic__elevation"]
         # clear qsin for next loop
@@ -2408,9 +2465,11 @@ class LateralEroder(Component):
             dzdt,
             flow_prop,
             grid.dx,
+            Kl_ratio,
             fai_alpha,
             fai_beta,
             fai_gamma,
+            fai_delta,
             fai_C,
             dt,
             critical_erosion_volume_ratio,
