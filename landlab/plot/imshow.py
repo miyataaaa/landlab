@@ -21,6 +21,7 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib.collections import LineCollection, PatchCollection
     from matplotlib.patches import Polygon
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
 except ImportError:
     import warnings
 
@@ -325,9 +326,13 @@ def _imshow_grid_values(
         plt.autoscale(tight=True)
 
         if allow_colorbar:
-            cb = plt.colorbar(norm=norm, shrink=shrink)
+            ax = plt.gca()
+            divider1 = make_axes_locatable(ax)
+            cax = divider1.append_axes("right", size="5%", pad=0.1)
+            cb = plt.colorbar(norm=norm, shrink=shrink, cax=cax)
             if colorbar_label:
                 cb.set_label(colorbar_label)
+            plt.axes(ax)
     else:
         import matplotlib.cm as cmx
         import matplotlib.colors as colors

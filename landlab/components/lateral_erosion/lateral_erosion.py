@@ -1188,7 +1188,7 @@ class LateralEroder(Component):
                 El[i] = petlat
                 fai[i] = petlat/ero #側方/下方侵食速度比率
                 node_num_at_i = len(np.where(lat_nodes_at_i != dummy_value)[0])
-                flow_angle[i] = angle
+                flow_angle[i] = angle # radian
 
                 # latero_nums[i] = -1 # 河川ノードは侵食が起きない前提で-1を代入(2023/11/17)
 

@@ -234,7 +234,11 @@ class _BaseProfiler(ABC, Component):
         ax.set_title(title)
 
     def plot_profiles_in_map_view(
-        self, field="topographic__elevation", endpoints_only=False, color=None, **kwds
+        self, 
+        field="topographic__elevation", 
+        endpoints_only=False, 
+        color=None, 
+        **kwds
     ):
         """Plot profile locations in map view.
 
