@@ -9,3 +9,7 @@ rich-click
 scipy
 statsmodels
 xarray >= 0.16
+ipykernel
+h5py
+tqdm
+pytables
